@@ -5,7 +5,7 @@
 package addrmgr
 
 import (
-	"github.com/gcash/bchlog"
+	"github.com/eager7/doglog"
 )
 
 // log is a logger that is initialized with no output filters.  This

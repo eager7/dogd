@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/eager7/dogd/chaincfg"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // mustParseShortForm parses the passed short form script and returns the

@@ -44,8 +44,8 @@ import (
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/version"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
-	"github.com/gcash/bchutil/merkleblock"
+	"github.com/eager7/dogutil"
+	"github.com/eager7/dogutil/merkleblock"
 )
 
 // API version constants

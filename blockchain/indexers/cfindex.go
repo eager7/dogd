@@ -13,9 +13,9 @@ import (
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
-	"github.com/gcash/bchutil/gcs"
-	"github.com/gcash/bchutil/gcs/builder"
+	"github.com/eager7/dogutil"
+	"github.com/eager7/dogutil/gcs"
+	"github.com/eager7/dogutil/gcs/builder"
 )
 
 const (

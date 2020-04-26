@@ -11,7 +11,7 @@ import (
 	"github.com/eager7/dogd/mempool"
 	"github.com/eager7/dogd/peer"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // PeerNotifier exposes methods to notify peers of status changes to

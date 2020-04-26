@@ -18,7 +18,7 @@ import (
 
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/mining"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // TODO incorporate Alex Morcos' modifications to Gavin's initial model

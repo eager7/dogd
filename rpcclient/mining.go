@@ -11,7 +11,7 @@ import (
 
 	"github.com/eager7/dogd/btcjson"
 	"github.com/eager7/dogd/chaincfg/chainhash"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // FutureGenerateResult is a future promise to deliver the result of a

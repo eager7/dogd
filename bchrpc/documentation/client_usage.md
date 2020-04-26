@@ -99,7 +99,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 var certificateFile = filepath.Join(bchutil.AppDataDir("bchd", false), "rpc.cert")

@@ -15,7 +15,7 @@ import (
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 const (

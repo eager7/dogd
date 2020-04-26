@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/eager7/dogd/chaincfg"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 const (

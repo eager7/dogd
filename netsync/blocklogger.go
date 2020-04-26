@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/eager7/dogd/blockchain"
-	"github.com/gcash/bchlog"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/doglog"
+	"github.com/eager7/dogutil"
 )
 
 // blockProgressLogger provides periodic logging for other services in order

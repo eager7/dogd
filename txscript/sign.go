@@ -11,7 +11,7 @@ import (
 	"github.com/eager7/dogd/bchec"
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // RawTxInECDSASignature returns the serialized ECDSA signature for the input idx of

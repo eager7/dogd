@@ -9,7 +9,7 @@ import (
 
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/database"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // BehaviorFlags is a bitmask defining tweaks to the normal behavior when

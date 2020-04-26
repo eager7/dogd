@@ -31,7 +31,7 @@ import (
 	"github.com/eager7/dogd/mempool"
 	"github.com/eager7/dogd/peer"
 	"github.com/eager7/dogd/version"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 
 	flags "github.com/jessevdk/go-flags"
 )

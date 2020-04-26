@@ -30,7 +30,7 @@ import (
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 const (

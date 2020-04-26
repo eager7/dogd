@@ -15,7 +15,7 @@ import (
 	"time"
 
 	rpc "github.com/eager7/dogd/rpcclient"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // nodeConfig contains all the args, and data required to launch a bchd process

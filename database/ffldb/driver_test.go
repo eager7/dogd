@@ -15,7 +15,7 @@ import (
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/database/ffldb"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // dbType is the database type name for this driver.

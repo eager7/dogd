@@ -12,7 +12,7 @@ import (
 
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // txValidateItem holds a transaction along with which input to validate.

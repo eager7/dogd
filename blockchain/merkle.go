@@ -8,7 +8,7 @@ import (
 	"math"
 
 	"github.com/eager7/dogd/chaincfg/chainhash"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // nextPowerOfTwo returns the next highest power of two from a given number if

@@ -12,7 +12,7 @@ import (
 
 	"github.com/eager7/dogd/rpcclient"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 func main() {

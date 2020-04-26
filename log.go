@@ -23,7 +23,7 @@ import (
 	"github.com/eager7/dogd/peer"
 	"github.com/eager7/dogd/txscript"
 
-	"github.com/gcash/bchlog"
+	"github.com/eager7/doglog"
 	"github.com/jrick/logrotate/rotator"
 )
 

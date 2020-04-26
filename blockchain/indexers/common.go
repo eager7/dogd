@@ -13,7 +13,7 @@ import (
 
 	"github.com/eager7/dogd/blockchain"
 	"github.com/eager7/dogd/database"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 var (

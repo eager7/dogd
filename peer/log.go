@@ -12,7 +12,7 @@ import (
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchlog"
+	"github.com/eager7/doglog"
 )
 
 const (

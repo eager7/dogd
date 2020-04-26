@@ -14,7 +14,7 @@ import (
 	"github.com/eager7/dogd/blockchain/indexers"
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/limits"
-	"github.com/gcash/bchlog"
+	"github.com/eager7/doglog"
 )
 
 const (

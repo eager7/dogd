@@ -206,7 +206,7 @@ information.
     * [mempool](https://github.com/eager7/dogd/tree/master/mempool) -
       Package mempool provides a policy-enforced pool of unmined bitcoin
       transactions.
-    * [bchutil](https://github.com/gcash/bchutil) - Provides Bitcoin-specific
+    * [bchutil](https://github.com/eager7/dogutil) - Provides Bitcoin-specific
       convenience functions and types
     * [chainhash](https://github.com/eager7/dogd/tree/master/chaincfg/chainhash) -
       Provides a generic hash type and associated functions that allows the

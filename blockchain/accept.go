@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/eager7/dogd/database"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // maybeAcceptBlock potentially accepts a block into the block chain and, if

@@ -11,7 +11,7 @@ import (
 
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/database"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // BenchmarkBlockHeader benchmarks how long it takes to load the mainnet genesis

@@ -13,7 +13,7 @@ import (
 	"github.com/eager7/dogd/netsync"
 	"github.com/eager7/dogd/peer"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // rpcPeer provides a peer for use with the RPC server and implements the

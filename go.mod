@@ -10,8 +10,8 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dchest/siphash v1.2.1
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
-	github.com/gcash/bchlog v0.0.0-20180913005452-b4f036f92fa6
-	github.com/gcash/bchutil v0.0.0-20200229194731-128fc9884722
+	github.com/eager7/doglog v0.0.0-20180913005452-b4f036f92fa6
+	github.com/eager7/dogutil v0.0.0-20200229194731-128fc9884722
 	github.com/golang/protobuf v1.3.4
 	github.com/improbable-eng/grpc-web v0.12.0
 	github.com/jessevdk/go-flags v0.0.0-20181221193153-c0795c8afcf4

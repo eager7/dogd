@@ -9,7 +9,7 @@ import (
 
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchlog"
+	"github.com/eager7/doglog"
 )
 
 var log = bchlog.Disabled

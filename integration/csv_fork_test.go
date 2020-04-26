@@ -21,7 +21,7 @@ import (
 	"github.com/eager7/dogd/integration/rpctest"
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // fixedExcessiveBlockSize should not be the default -we want to ensure it will work in all cases

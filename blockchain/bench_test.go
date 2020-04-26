@@ -7,7 +7,7 @@ package blockchain
 import (
 	"testing"
 
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // BenchmarkIsCoinBase performs a simple benchmark against the IsCoinBase

@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gcash/bchutil/gcs/builder"
+	"github.com/eager7/dogutil/gcs/builder"
 
 	"github.com/eager7/dogd/addrmgr"
 	"github.com/eager7/dogd/blockchain"
@@ -40,8 +40,8 @@ import (
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/version"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
-	"github.com/gcash/bchutil/bloom"
+	"github.com/eager7/dogutil"
+	"github.com/eager7/dogutil/bloom"
 )
 
 const (

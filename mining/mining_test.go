@@ -12,7 +12,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // TestTxFeePrioHeap ensures the priority queue for transaction fees and

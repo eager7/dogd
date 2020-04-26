@@ -1095,7 +1095,7 @@ package main
 
 import (
 	"github.com/eager7/dogd/rpcclient"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 	"io/ioutil"
 	"log"
 	"path/filepath"
@@ -1156,7 +1156,7 @@ package main
 
 import (
 	"github.com/eager7/dogd/rpcclient"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/wire"
 	"io/ioutil"
@@ -1248,7 +1248,7 @@ package main
 
 import (
 	"github.com/eager7/dogd/rpcclient"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/wire"
 	"io/ioutil"

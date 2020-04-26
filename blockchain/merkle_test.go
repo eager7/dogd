@@ -5,7 +5,7 @@
 package blockchain
 
 import (
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 	"testing"
 )
 

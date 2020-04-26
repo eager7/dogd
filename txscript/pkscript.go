@@ -7,7 +7,7 @@ import (
 
 	"github.com/eager7/dogd/bchec"
 	"github.com/eager7/dogd/chaincfg"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 	"golang.org/x/crypto/ripemd160"
 )
 

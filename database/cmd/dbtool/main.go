@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/eager7/dogd/database"
-	"github.com/gcash/bchlog"
+	"github.com/eager7/doglog"
 	flags "github.com/jessevdk/go-flags"
 )
 

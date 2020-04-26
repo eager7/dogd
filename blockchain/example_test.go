@@ -14,7 +14,7 @@ import (
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/database"
 	_ "github.com/eager7/dogd/database/ffldb"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 // This example demonstrates how to create a new chain instance and use

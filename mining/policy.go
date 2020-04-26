@@ -7,7 +7,7 @@ package mining
 import (
 	"github.com/eager7/dogd/blockchain"
 	"github.com/eager7/dogd/wire"
-	"github.com/gcash/bchutil"
+	"github.com/eager7/dogutil"
 )
 
 const (
