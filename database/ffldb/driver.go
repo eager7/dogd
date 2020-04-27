@@ -6,13 +6,13 @@ package ffldb
 
 import (
 	"fmt"
+	"github.com/eager7/doglog"
 
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/wire"
-	"github.com/eager7/doglog"
 )
 
-var log = btclog.Disabled
+var log = doglog.Disabled
 
 const (
 	dbType = "ffldb"
@@ -65,7 +65,7 @@ func createDBDriver(args ...interface{}) (database.DB, error) {
 
 // useLogger is the callback provided during driver registration that sets the
 // current logger to the provided one.
-func useLogger(logger btclog.Logger) {
+func useLogger(logger doglog.Logger) {
 	log = logger
 }
 

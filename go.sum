@@ -13,8 +13,9 @@ github.com/btcsuite/winsvc v1.0.0/go.mod h1:jsenWakMcC0zFBFurPLEAyrnc/teJEM1O46f
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/eager7/dogd v0.0.0-20200427033722-13db756ab6a8/go.mod h1:5IBAcuraCh1ftcUzA8D+RqiPTfip1HmqCpiFA7DV8Y0=
-github.com/eager7/doglog v0.0.0-20200426084830-384027fc4565 h1:wlMH3XFO3PjI1zMHkcNTRJkFc/uiGAr3oHZWiMfI++w=
 github.com/eager7/doglog v0.0.0-20200426084830-384027fc4565/go.mod h1:bFnpHxKLVu82/oWCKTdMmC7Z79FFMbMJ+ylJQicf7dI=
+github.com/eager7/doglog v0.0.0-20200427040431-a0db59f0a792 h1:YCWgPaQQlUD4NAMLSqnty8DPIBJeX+tp/2qkhIzr4Xo=
+github.com/eager7/doglog v0.0.0-20200427040431-a0db59f0a792/go.mod h1:bFnpHxKLVu82/oWCKTdMmC7Z79FFMbMJ+ylJQicf7dI=
 github.com/eager7/dogutil v0.0.0-20200427033507-8353d4a5b7fd/go.mod h1:wHHELBR7B/P0Dyvy0vdrx/JI3bi2sDQGn7bZzwf/TSw=
 github.com/eager7/dogutil v0.0.0-20200427033823-cd066b4fc75e h1:fEtWowjXFh0snQyXBaEVekQJOj5vK/cDRfumQwIz9bA=
 github.com/eager7/dogutil v0.0.0-20200427033823-cd066b4fc75e/go.mod h1:2JTeuOR+QrfOi6LR2FDH/RTi/k9+Npzye5y0YDMoXEw=
