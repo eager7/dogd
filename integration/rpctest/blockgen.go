@@ -14,11 +14,9 @@ import (
 	"github.com/eager7/dogd/blockchain"
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/chaincfg/chainhash"
-	"github.com/eager7/dogd/mining"
 	"github.com/eager7/dogd/txscript"
 	"github.com/eager7/dogd/wire"
 	"github.com/eager7/dogutil"
-	"sort"
 )
 
 // solveBlock attempts to find a nonce which makes the passed block header hash
@@ -98,8 +96,8 @@ func standardCoinbaseScript(nextBlockHeight int32, extraNonce uint64) ([]byte, e
 // createCoinbaseTx returns a coinbase transaction paying an appropriate
 // subsidy based on the passed block height to the provided address.
 func createCoinbaseTx(coinbaseScript []byte, nextBlockHeight int32,
-	addr bchutil.Address, mineTo []wire.TxOut,
-	net *chaincfg.Params) (*bchutil.Tx, error) {
+	addr dogutil.Address, mineTo []wire.TxOut,
+	net *chaincfg.Params) (*dogutil.Tx, error) {
 
 	// Create the script to pay to the provided payment address.
 	pkScript, err := txscript.PayToAddrScript(addr)
@@ -126,7 +124,7 @@ func createCoinbaseTx(coinbaseScript []byte, nextBlockHeight int32,
 			tx.AddTxOut(&mineTo[i])
 		}
 	}
-	return bchutil.NewTx(tx), nil
+	return dogutil.NewTx(tx), nil
 }
 
 // CreateBlock creates a new block building from the previous block with a
@@ -134,9 +132,9 @@ func createCoinbaseTx(coinbaseScript []byte, nextBlockHeight int32,
 // initialized), then the timestamp of the previous block will be used plus 1
 // second is used. Passing nil for the previous block results in a block that
 // builds off of the genesis block for the specified chain.
-func CreateBlock(prevBlock *bchutil.Block, inclusionTxs []*bchutil.Tx,
-	blockVersion int32, blockTime time.Time, miningAddr bchutil.Address,
-	mineTo []wire.TxOut, net *chaincfg.Params) (*bchutil.Block, error) {
+func CreateBlock(prevBlock *dogutil.Block, inclusionTxs []*dogutil.Tx,
+	blockVersion int32, blockTime time.Time, miningAddr dogutil.Address,
+	mineTo []wire.TxOut, net *chaincfg.Params) (*dogutil.Block, error) {
 
 	var (
 		prevHash      *chainhash.Hash
@@ -179,16 +177,11 @@ func CreateBlock(prevBlock *bchutil.Block, inclusionTxs []*bchutil.Tx,
 	}
 
 	// Create a new block ready to be solved.
-	var blockTxns []*bchutil.Tx
+	blockTxns := []*dogutil.Tx{coinbaseTx}
 	if inclusionTxs != nil {
 		blockTxns = append(blockTxns, inclusionTxs...)
 	}
-	// If magnetic anomaly is enabled ally CTOR sorting
-	if blockHeight > net.MagneticAnonomalyForkHeight {
-		sort.Sort(mining.TxSorter(blockTxns))
-	}
-	blockTxns = append([]*bchutil.Tx{coinbaseTx}, blockTxns...)
-	merkles := blockchain.BuildMerkleTreeStore(blockTxns)
+	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false)
 	var block wire.MsgBlock
 	block.Header = wire.BlockHeader{
 		Version:    blockVersion,
@@ -208,7 +201,7 @@ func CreateBlock(prevBlock *bchutil.Block, inclusionTxs []*bchutil.Tx,
 		return nil, errors.New("Unable to solve block")
 	}
 
-	utilBlock := bchutil.NewBlock(&block)
+	utilBlock := dogutil.NewBlock(&block)
 	utilBlock.SetHeight(blockHeight)
 	return utilBlock, nil
 }

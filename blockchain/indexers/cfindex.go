@@ -5,7 +5,6 @@
 package indexers
 
 import (
-	"encoding/binary"
 	"errors"
 
 	"github.com/eager7/dogd/blockchain"
@@ -21,9 +20,6 @@ import (
 const (
 	// cfIndexName is the human-readable name for the index.
 	cfIndexName = "committed filter index"
-
-	// cfIndexVersion is the current version of the index.
-	cfIndexVersion = 2
 )
 
 // Committed filters come in one flavor currently: basic. They are generated
@@ -54,10 +50,6 @@ var (
 
 	maxFilterType = uint8(len(cfHeaderKeys) - 1)
 
-	// cfIndexMigrationVersionKey is the db key used to store the migration
-	// version this index is migrated to.
-	cfIndexMigrationVersionKey = []byte("cfindexmigrationversion")
-
 	// zeroHash is the chainhash.Hash value of all zero bytes, defined here
 	// for convenience.
 	zeroHash chainhash.Hash
@@ -82,25 +74,6 @@ func dbDeleteFilterIdxEntry(dbTx database.Tx, key []byte, h *chainhash.Hash) err
 	return idx.Delete(h[:])
 }
 
-// dbFetchMigrationVersion retrieves the migration version from the bucket.
-func dbFetchMigrationVersion(dbTx database.Tx) (uint32, error) {
-	bucket := dbTx.Metadata().Bucket(cfIndexParentBucketKey)
-	versionBytes := bucket.Get(cfIndexMigrationVersionKey)
-	version := uint32(0)
-	if len(versionBytes) == 4 {
-		version = binary.BigEndian.Uint32(versionBytes)
-	}
-	return version, nil
-}
-
-// dbStoreMigrationVersion stores the migration version in the bucket.
-func dbStoreMigrationVersion(dbTx database.Tx, version uint32) error {
-	bucket := dbTx.Metadata().Bucket(cfIndexParentBucketKey)
-	versionBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(versionBytes, version)
-	return bucket.Put(cfIndexMigrationVersionKey, versionBytes)
-}
-
 // CfIndex implements a committed filter (cf) by hash index.
 type CfIndex struct {
 	db          database.DB
@@ -118,51 +91,13 @@ var _ NeedsInputser = (*CfIndex)(nil)
 //
 // This implements the NeedsInputser interface.
 func (idx *CfIndex) NeedsInputs() bool {
-	return false
+	return true
 }
 
 // Init initializes the hash-based cf index. This is part of the Indexer
 // interface.
 func (idx *CfIndex) Init() error {
 	return nil // Nothing to do.
-}
-
-// Migrate migrates the index up to the current version. For the CfIndex we will
-// just drop the index here and write the new version number. The IndexManager
-// will then rebuild the index from the blockchain, using the new scheme,
-// as it continues its Init function.
-//
-// This is part of the Indexer interface.
-func (idx *CfIndex) Migrate(db database.DB, interrupt <-chan struct{}) error {
-	// Load the version number from the metadata bucket.
-	var cfIndexMigrationVersion uint32
-	err := db.View(func(dbTx database.Tx) error {
-		var err error
-		cfIndexMigrationVersion, err = dbFetchMigrationVersion(dbTx)
-		return err
-	})
-	if err != nil {
-		return err
-	}
-
-	// If the version is less than 1 then drop the index and write the new version.
-	if cfIndexMigrationVersion < cfIndexVersion {
-		log.Infof("Migrating CfIndex to version %d", cfIndexVersion)
-		if err := dropIndex(db, cfIndexParentBucketKey, cfIndexName, interrupt); err != nil {
-			return err
-		}
-		return db.Update(func(dbTx database.Tx) error {
-			// The tip for the index does not exist, so create it.
-			if err := idx.Create(dbTx); err != nil {
-				return err
-			}
-
-			// Set the tip for the index to values which represent an
-			// uninitialized index.
-			return dbPutIndexerTip(dbTx, cfIndexParentBucketKey, &chainhash.Hash{}, -1)
-		})
-	}
-	return nil
 }
 
 // Key returns the database key to use for the index as a byte slice. This is
@@ -209,12 +144,12 @@ func (idx *CfIndex) Create(dbTx database.Tx) error {
 		}
 	}
 
-	return dbStoreMigrationVersion(dbTx, cfIndexVersion)
+	return nil
 }
 
 // storeFilter stores a given filter, and performs the steps needed to
 // generate the filter's header.
-func storeFilter(dbTx database.Tx, block *bchutil.Block, f *gcs.Filter,
+func storeFilter(dbTx database.Tx, block *dogutil.Block, f *gcs.Filter,
 	filterType wire.FilterType) error {
 	if uint8(filterType) > maxFilterType {
 		return errors.New("unsupported filter type")
@@ -274,10 +209,15 @@ func storeFilter(dbTx database.Tx, block *bchutil.Block, f *gcs.Filter,
 // ConnectBlock is invoked by the index manager when a new block has been
 // connected to the main chain. This indexer adds a hash-to-cf mapping for
 // every passed block. This is part of the Indexer interface.
-func (idx *CfIndex) ConnectBlock(dbTx database.Tx, block *bchutil.Block,
+func (idx *CfIndex) ConnectBlock(dbTx database.Tx, block *dogutil.Block,
 	stxos []blockchain.SpentTxOut) error {
 
-	f, err := builder.BuildBasicFilter(block.MsgBlock())
+	prevScripts := make([][]byte, len(stxos))
+	for i, stxo := range stxos {
+		prevScripts[i] = stxo.PkScript
+	}
+
+	f, err := builder.BuildBasicFilter(block.MsgBlock(), prevScripts)
 	if err != nil {
 		return err
 	}
@@ -288,7 +228,7 @@ func (idx *CfIndex) ConnectBlock(dbTx database.Tx, block *bchutil.Block,
 // DisconnectBlock is invoked by the index manager when a block has been
 // disconnected from the main chain.  This indexer removes the hash-to-cf
 // mapping for every passed block. This is part of the Indexer interface.
-func (idx *CfIndex) DisconnectBlock(dbTx database.Tx, block *bchutil.Block,
+func (idx *CfIndex) DisconnectBlock(dbTx database.Tx, block *dogutil.Block,
 	_ []blockchain.SpentTxOut) error {
 
 	for _, key := range cfIndexKeys {

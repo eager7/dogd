@@ -45,7 +45,7 @@ type AddrManager struct {
 	nTried         int
 	nNew           int
 	lamtx          sync.Mutex
-	localAddresses map[string]*LocalAddress
+	localAddresses map[string]*localAddress
 	version        int
 }
 
@@ -69,10 +69,9 @@ type serializedAddrManager struct {
 	TriedBuckets [triedBucketCount][]string
 }
 
-// LocalAddress holds a NetAddress with the addresses's priority.
-type LocalAddress struct {
-	NA    *wire.NetAddress
-	Score AddressPriority
+type localAddress struct {
+	na    *wire.NetAddress
+	score AddressPriority
 }
 
 // AddressPriority type is used to describe the hierarchy of local address
@@ -521,7 +520,7 @@ func (a *AddrManager) deserializePeers(filePath string) error {
 		for _, val := range sam.TriedBuckets[i] {
 			ka, ok := a.addrIndex[val]
 			if !ok {
-				return fmt.Errorf("newbucket contains %s but "+
+				return fmt.Errorf("Newbucket contains %s but "+
 					"none in address list", val)
 			}
 
@@ -540,7 +539,7 @@ func (a *AddrManager) deserializePeers(filePath string) error {
 
 		if v.refs > 0 && v.tried {
 			return fmt.Errorf("address %s after serialisation "+
-				"which is both new and tried", k)
+				"which is both new and tried!", k)
 		}
 	}
 
@@ -755,8 +754,8 @@ func (a *AddrManager) HostToNetAddress(host string, port uint16, services wire.S
 func ipString(na *wire.NetAddress) string {
 	if IsOnionCatTor(na) {
 		// We know now that na.IP is long enough.
-		base32str := base32.StdEncoding.EncodeToString(na.IP[6:])
-		return strings.ToLower(base32str) + ".onion"
+		base32 := base32.StdEncoding.EncodeToString(na.IP[6:])
+		return strings.ToLower(base32) + ".onion"
 	}
 
 	return na.IP.String()
@@ -974,7 +973,7 @@ func (a *AddrManager) Good(addr *wire.NetAddress) {
 	a.addrNew[newBucket][rmkey] = rmka
 }
 
-// SetServices sets the services for the given address to the provided value.
+// SetServices sets the services for the giiven address to the provided value.
 func (a *AddrManager) SetServices(addr *wire.NetAddress, services wire.ServiceFlag) {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
@@ -1005,13 +1004,13 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 
 	key := NetAddressKey(na)
 	la, ok := a.localAddresses[key]
-	if !ok || la.Score < priority {
+	if !ok || la.score < priority {
 		if ok {
-			la.Score = priority + 1
+			la.score = priority + 1
 		} else {
-			a.localAddresses[key] = &LocalAddress{
-				NA:    na,
-				Score: priority,
+			a.localAddresses[key] = &localAddress{
+				na:    na,
+				score: priority,
 			}
 		}
 	}
@@ -1107,12 +1106,12 @@ func (a *AddrManager) GetBestLocalAddress(remoteAddr *wire.NetAddress) *wire.Net
 	var bestscore AddressPriority
 	var bestAddress *wire.NetAddress
 	for _, la := range a.localAddresses {
-		reach := getReachabilityFrom(la.NA, remoteAddr)
+		reach := getReachabilityFrom(la.na, remoteAddr)
 		if reach > bestreach ||
-			(reach == bestreach && la.Score > bestscore) {
+			(reach == bestreach && la.score > bestscore) {
 			bestreach = reach
-			bestscore = la.Score
-			bestAddress = la.NA
+			bestscore = la.score
+			bestAddress = la.na
 		}
 	}
 	if bestAddress != nil {
@@ -1129,20 +1128,11 @@ func (a *AddrManager) GetBestLocalAddress(remoteAddr *wire.NetAddress) *wire.Net
 		} else {
 			ip = net.IPv4zero
 		}
-		services := wire.SFNodeNetwork | wire.SFNodeBloom
+		services := wire.SFNodeNetwork | wire.SFNodeWitness | wire.SFNodeBloom
 		bestAddress = wire.NewNetAddressIPPort(ip, 0, services)
 	}
 
 	return bestAddress
-}
-
-// LocalAddresses returns the list of local addresses for our node.
-func (a *AddrManager) LocalAddresses() []*LocalAddress {
-	var addrs []*LocalAddress
-	for _, addr := range a.localAddresses {
-		addrs = append(addrs, addr)
-	}
-	return addrs
 }
 
 // New returns a new bitcoin address manager.
@@ -1153,7 +1143,7 @@ func New(dataDir string, lookupFunc func(string) ([]net.IP, error)) *AddrManager
 		lookupFunc:     lookupFunc,
 		rand:           rand.New(rand.NewSource(time.Now().UnixNano())),
 		quit:           make(chan struct{}),
-		localAddresses: make(map[string]*LocalAddress),
+		localAddresses: make(map[string]*localAddress),
 		version:        serialisationVersion,
 	}
 	am.reset()

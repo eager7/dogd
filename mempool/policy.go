@@ -19,6 +19,10 @@ const (
 	// that are considered standard in a pay-to-script-hash script.
 	maxStandardP2SHSigOps = 15
 
+	// maxStandardTxCost is the max weight permitted by any transaction
+	// according to the current default policy.
+	maxStandardTxWeight = 400000
+
 	// maxStandardSigScriptSize is the maximum size allowed for a
 	// transaction input signature script to be considered standard.  This
 	// value allows for a 15-of-15 CHECKMULTISIG pay-to-script-hash with
@@ -43,21 +47,18 @@ const (
 	// purposes.  It is also used to help determine if a transaction is
 	// considered dust and as a base for calculating minimum required fees
 	// for larger transactions.  This value is in Satoshi/1000 bytes.
-	DefaultMinRelayTxFee = bchutil.Amount(1000)
+	DefaultMinRelayTxFee = dogutil.Amount(1000)
 
 	// maxStandardMultiSigKeys is the maximum number of public keys allowed
 	// in a multi-signature transaction output script for it to be
 	// considered standard.
 	maxStandardMultiSigKeys = 3
-
-	// maxStandardTxSize is the maximum size of a transaction
-	maxStandardTxSize = 1000000
 )
 
 // calcMinRequiredTxRelayFee returns the minimum transaction fee required for a
 // transaction with the passed serialized size to be accepted into the memory
 // pool and relayed.
-func calcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee bchutil.Amount) int64 {
+func calcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee dogutil.Amount) int64 {
 	// Calculate the minimum fee for a transaction to be allowed into the
 	// mempool and relayed by scaling the base fee (which is the minimum
 	// free transaction relay fee).  minRelayTxFee is in Satoshi/kB so
@@ -71,8 +72,8 @@ func calcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee bchutil.Amoun
 
 	// Set the minimum fee to the maximum possible value if the calculated
 	// fee is not in the valid range for monetary amounts.
-	if minFee < 0 || minFee > bchutil.MaxSatoshi {
-		minFee = bchutil.MaxSatoshi
+	if minFee < 0 || minFee > dogutil.MaxSatoshi {
+		minFee = dogutil.MaxSatoshi
 	}
 
 	return minFee
@@ -88,7 +89,7 @@ func calcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee bchutil.Amoun
 // not perform those checks because the script engine already does this more
 // accurately and concisely via the txscript.ScriptVerifyCleanStack and
 // txscript.ScriptVerifySigPushOnly flags.
-func checkInputsStandard(tx *bchutil.Tx, utxoView *blockchain.UtxoViewpoint, scriptFlags txscript.ScriptFlags) error {
+func checkInputsStandard(tx *dogutil.Tx, utxoView *blockchain.UtxoViewpoint) error {
 	// NOTE: The reference implementation also does a coinbase check here,
 	// but coinbases have already been rejected prior to calling this
 	// function so no need to recheck.
@@ -102,7 +103,7 @@ func checkInputsStandard(tx *bchutil.Tx, utxoView *blockchain.UtxoViewpoint, scr
 		switch txscript.GetScriptClass(originPkScript) {
 		case txscript.ScriptHashTy:
 			numSigOps := txscript.GetPreciseSigOpCount(
-				txIn.SignatureScript, originPkScript, scriptFlags)
+				txIn.SignatureScript, originPkScript, true)
 			if numSigOps > maxStandardP2SHSigOps {
 				str := fmt.Sprintf("transaction input #%d has "+
 					"%d signature operations which is more "+
@@ -176,7 +177,7 @@ func checkPkScriptStandard(pkScript []byte, scriptClass txscript.ScriptClass) er
 // Dust is defined in terms of the minimum transaction relay fee.  In
 // particular, if the cost to the network to spend coins is more than 1/3 of the
 // minimum transaction relay fee, it is considered dust.
-func isDust(txOut *wire.TxOut, minRelayTxFee bchutil.Amount) bool {
+func isDust(txOut *wire.TxOut, minRelayTxFee dogutil.Amount) bool {
 	// Unspendable outputs are considered dust.
 	if txscript.IsUnspendable(txOut.PkScript) {
 		return true
@@ -214,6 +215,17 @@ func isDust(txOut *wire.TxOut, minRelayTxFee bchutil.Amount) bool {
 	//   36 prev outpoint, 1 script len, 73 script [1 OP_DATA_72,
 	//   72 sig], 4 sequence
 	//
+	// Pay-to-witness-pubkey-hash bytes breakdown:
+	//
+	//  Output to witness key hash (31 bytes);
+	//   8 value, 1 script len, 22 script [1 OP_0, 1 OP_DATA_20,
+	//   20 bytes hash160]
+	//
+	//  Input (67 bytes as the 107 witness stack is discounted):
+	//   36 prev outpoint, 1 script len, 0 script (not sigScript), 107
+	//   witness stack bytes [1 element length, 33 compressed pubkey,
+	//   element length 72 sig], 4 sequence
+	//
 	//
 	// Theoretically this could examine the script type of the output script
 	// and use a different size for the typical input script size for
@@ -224,11 +236,22 @@ func isDust(txOut *wire.TxOut, minRelayTxFee bchutil.Amount) bool {
 	//
 	// The most common scripts are pay-to-pubkey-hash, and as per the above
 	// breakdown, the minimum size of a p2pkh input script is 148 bytes.  So
-	// that figure is used.
+	// that figure is used. If the output being spent is a witness program,
+	// then we apply the witness discount to the size of the signature.
+	//
+	// The segwit analogue to p2pkh is a p2wkh output. This is the smallest
+	// output possible using the new segwit features. The 107 bytes of
+	// witness data is discounted by a factor of 4, leading to a computed
+	// value of 67 bytes of witness data.
 	//
 	// Both cases share a 41 byte preamble required to reference the input
 	// being spent and the sequence number of the input.
-	totalSize := txOut.SerializeSize() + 41 + 107
+	totalSize := txOut.SerializeSize() + 41
+	if txscript.IsWitnessProgram(txOut.PkScript) {
+		totalSize += (107 / blockchain.WitnessScaleFactor)
+	} else {
+		totalSize += 107
+	}
 
 	// The output is considered dust if the cost to the network to spend the
 	// coins is more than 1/3 of the minimum free transaction relay fee.
@@ -252,8 +275,8 @@ func isDust(txOut *wire.TxOut, minRelayTxFee bchutil.Amount) bool {
 // finalized, conforming to more stringent size constraints, having scripts
 // of recognized forms, and not containing "dust" outputs (those that are
 // so small it costs more to process them than they are worth).
-func checkTransactionStandard(tx *bchutil.Tx, height int32,
-	medianTimePast time.Time, minRelayTxFee bchutil.Amount,
+func checkTransactionStandard(tx *dogutil.Tx, height int32,
+	medianTimePast time.Time, minRelayTxFee dogutil.Amount,
 	maxTxVersion int32) error {
 
 	// The transaction must be a currently supported version.
@@ -276,10 +299,10 @@ func checkTransactionStandard(tx *bchutil.Tx, height int32,
 	// almost as much to process as the sender fees, limit the maximum
 	// size of a transaction.  This also helps mitigate CPU exhaustion
 	// attacks.
-	txSize := tx.MsgTx().SerializeSize()
-	if txSize > blockchain.MaxTransactionSize {
-		str := fmt.Sprintf("size of transaction %v is larger than max "+
-			"allowed size of %v", txSize, blockchain.MaxTransactionSize)
+	txWeight := blockchain.GetTransactionWeight(tx)
+	if txWeight > maxStandardTxWeight {
+		str := fmt.Sprintf("weight of transaction %v is larger than max "+
+			"allowed weight of %v", txWeight, maxStandardTxWeight)
 		return txRuleError(wire.RejectNonstandard, str)
 	}
 
@@ -343,4 +366,17 @@ func checkTransactionStandard(tx *bchutil.Tx, height int32,
 	}
 
 	return nil
+}
+
+// GetTxVirtualSize computes the virtual size of a given transaction. A
+// transaction's virtual size is based off its weight, creating a discount for
+// any witness data it contains, proportional to the current
+// blockchain.WitnessScaleFactor value.
+func GetTxVirtualSize(tx *dogutil.Tx) int64 {
+	// vSize := (weight(tx) + 3) / 4
+	//       := (((baseSize * 3) + totalSize) + 3) / 4
+	// We add 3 here as a way to compute the ceiling of the prior arithmetic
+	// to 4. The division by 4 creates a discount for wit witness data.
+	return (blockchain.GetTransactionWeight(tx) + (blockchain.WitnessScaleFactor - 1)) /
+		blockchain.WitnessScaleFactor
 }

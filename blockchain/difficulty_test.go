@@ -63,7 +63,7 @@ func TestCalcWork(t *testing.T) {
 	}
 
 	for x, test := range tests {
-		bits := test.in
+		bits := uint32(test.in)
 
 		r := CalcWork(bits)
 		if r.Int64() != test.out {

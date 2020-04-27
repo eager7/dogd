@@ -102,7 +102,7 @@ func assertSoftForkStatus(r *rpctest.Harness, t *testing.T, forkKey string, stat
 	}
 
 	// Ensure the key is available.
-	desc, ok := info.Bip9SoftForks[forkKey]
+	desc, ok := info.SoftForks.Bip9SoftForks[forkKey]
 	if !ok {
 		_, _, line, _ := runtime.Caller(1)
 		t.Fatalf("assertion failed at line %d: softfork status for %q "+
@@ -129,14 +129,14 @@ func assertSoftForkStatus(r *rpctest.Harness, t *testing.T, forkKey string, stat
 // specific soft fork deployment to test.
 func testBIP0009(t *testing.T, forkKey string, deploymentID uint32) {
 	// Initialize the primary mining node with only the genesis block.
-	r, err := rpctest.New(&chaincfg.SimNetParams, nil, nil)
+	r, err := rpctest.New(&chaincfg.RegressionNetParams, nil, nil)
 	if err != nil {
 		t.Fatalf("unable to create primary harness: %v", err)
 	}
-	defer r.TearDown()
 	if err := r.SetUp(false, 0); err != nil {
 		t.Fatalf("unable to setup test chain: %v", err)
 	}
+	defer r.TearDown()
 
 	// *** ThresholdDefined ***
 	//
@@ -299,9 +299,10 @@ func TestBIP0009(t *testing.T) {
 	t.Parallel()
 
 	testBIP0009(t, "dummy", chaincfg.DeploymentTestDummy)
+	testBIP0009(t, "segwit", chaincfg.DeploymentSegwit)
 }
 
-// TestBIP0009Mining ensures blocks built via bchd's CPU miner follow the rules
+// TestBIP0009Mining ensures blocks built via btcd's CPU miner follow the rules
 // set forth by BIP0009 by using the test dummy deployment.
 //
 // Overview:
@@ -323,10 +324,10 @@ func TestBIP0009Mining(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to create primary harness: %v", err)
 	}
-	defer r.TearDown()
 	if err := r.SetUp(true, 0); err != nil {
 		t.Fatalf("unable to setup test chain: %v", err)
 	}
+	defer r.TearDown()
 
 	// Assert the chain only consists of the gensis block.
 	assertChainHeight(r, t, 0)
@@ -353,7 +354,7 @@ func TestBIP0009Mining(t *testing.T) {
 	// in the version.
 	//
 	// The last generated block should now have the test bit set in the
-	// version since the bchd mining code will have recognized the test
+	// version since the btcd mining code will have recognized the test
 	// dummy deployment as started.
 	confirmationWindow := r.ActiveNet.MinerConfirmationWindow
 	numNeeded := confirmationWindow - 1
@@ -370,7 +371,7 @@ func TestBIP0009Mining(t *testing.T) {
 	// Generate enough blocks to reach the next state transition.
 	//
 	// The last generated block should still have the test bit set in the
-	// version since the bchd mining code will have recognized the test
+	// version since the btcd mining code will have recognized the test
 	// dummy deployment as locked in.
 	hashes, err = r.Node.Generate(confirmationWindow)
 	if err != nil {
@@ -388,7 +389,7 @@ func TestBIP0009Mining(t *testing.T) {
 	// in the version since it is still locked in.
 	//
 	// The last generated block should NOT have the test bit set in the
-	// version since the bchd mining code will have recognized the test
+	// version since the btcd mining code will have recognized the test
 	// dummy deployment as activated and thus there is no longer any need
 	// to set the bit.
 	hashes, err = r.Node.Generate(confirmationWindow)

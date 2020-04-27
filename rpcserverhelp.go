@@ -21,7 +21,7 @@ var helpDescsEnUS = map[string]string{
 		"The levelspec can either a debug level or of the form:\n" +
 		"<subsystem>=<level>,<subsystem2>=<level2>,...\n" +
 		"The valid debug levels are trace, debug, info, warn, error, and critical.\n" +
-		"The valid subsystems are AMGR, ADXR, BCDB, BMGR, BCHD, CHAN, DISC, PEER, RPCS, SCRP, SRVR, and TXMP.\n" +
+		"The valid subsystems are AMGR, ADXR, BCDB, BMGR, BTCD, CHAN, DISC, PEER, RPCS, SCRP, SRVR, and TXMP.\n" +
 		"Finally the keyword 'show' will return a list of the available subsystems.",
 	"debuglevel-levelspec":   "The debug level(s) to use or the keyword 'show'",
 	"debuglevel--condition0": "levelspec!=show",
@@ -162,41 +162,46 @@ var helpDescsEnUS = map[string]string{
 	// GetBlockCmd help.
 	"getblock--synopsis":   "Returns information about a block given its hash.",
 	"getblock-hash":        "The hash of the block",
-	"getblock-verbose":     "Specifies the block is returned as a JSON object instead of hex-encoded string",
-	"getblock-verbosetx":   "Specifies that each transaction is returned as a JSON object and only applies if the verbose flag is true (dcrd extension)",
-	"getblock--condition0": "verbose=false",
-	"getblock--condition1": "verbose=true",
-	"getblock--condition2": "verbosetx=true",
+	"getblock-verbosity":   "Specifies whether the block data should be returned as a hex-encoded string (0), as parsed data with a slice of TXIDs (1), or as parsed data with parsed transaction data (2) ",
+	"getblock--condition0": "verbosity=0",
+	"getblock--condition1": "verbosity=1",
 	"getblock--result0":    "Hex-encoded bytes of the serialized block",
-	"getblock--result1":    "JSON object with information about block",
-	"getblock--result2":    "JSON object with information about block and information about each transaction.",
 
 	// GetBlockChainInfoCmd help.
 	"getblockchaininfo--synopsis": "Returns information about the current blockchain state and the status of any active soft-fork deployments.",
 
 	// GetBlockChainInfoResult help.
-	"getblockchaininforesult-chain":                 "The name of the chain the daemon is on (testnet, mainnet, etc)",
-	"getblockchaininforesult-blocks":                "The number of blocks in the best known chain",
-	"getblockchaininforesult-headers":               "The number of headers that we've gathered for in the best known chain",
-	"getblockchaininforesult-bestblockhash":         "The block hash for the latest block in the main chain",
-	"getblockchaininforesult-difficulty":            "The current chain difficulty",
-	"getblockchaininforesult-mediantime":            "The median time from the PoV of the best block in the chain",
-	"getblockchaininforesult-verificationprogress":  "An estimate for how much of the best chain we've verified",
-	"getblockchaininforesult-syncheight":            "The block height obtained from the best peer",
-	"getblockchaininforesult-pruned":                "A bool that indicates if the node is pruned or not",
-	"getblockchaininforesult-pruneheight":           "The lowest block retained in the current pruned chain",
-	"getblockchaininforesult-chainwork":             "The total cumulative work in the best chain",
-	"getblockchaininforesult-softforks":             "The status of the super-majority soft-forks",
-	"getblockchaininforesult-bip9_softforks":        "JSON object describing active BIP0009 deployments",
-	"getblockchaininforesult-bip9_softforks--key":   "bip9_softforks",
-	"getblockchaininforesult-bip9_softforks--value": "An object describing a particular BIP009 deployment",
-	"getblockchaininforesult-bip9_softforks--desc":  "The status of any defined BIP0009 soft-fork deployments",
+	"getblockchaininforesult-chain":                "The name of the chain the daemon is on (testnet, mainnet, etc)",
+	"getblockchaininforesult-blocks":               "The number of blocks in the best known chain",
+	"getblockchaininforesult-headers":              "The number of headers that we've gathered for in the best known chain",
+	"getblockchaininforesult-bestblockhash":        "The block hash for the latest block in the main chain",
+	"getblockchaininforesult-difficulty":           "The current chain difficulty",
+	"getblockchaininforesult-mediantime":           "The median time from the PoV of the best block in the chain",
+	"getblockchaininforesult-verificationprogress": "An estimate for how much of the best chain we've verified",
+	"getblockchaininforesult-pruned":               "A bool that indicates if the node is pruned or not",
+	"getblockchaininforesult-pruneheight":          "The lowest block retained in the current pruned chain",
+	"getblockchaininforesult-chainwork":            "The total cumulative work in the best chain",
+	"getblockchaininforesult-softforks":            "The status of the super-majority soft-forks",
+	"getblockchaininforesult-unifiedsoftforks":     "The status of the super-majority soft-forks used by bitcoind on or after v0.19.0",
 
 	// SoftForkDescription help.
 	"softforkdescription-reject":  "The current activation status of the softfork",
 	"softforkdescription-version": "The block version that signals enforcement of this softfork",
 	"softforkdescription-id":      "The string identifier for the soft fork",
 	"-status":                     "A bool which indicates if the soft fork is active",
+
+	// SoftForks help.
+	"softforks-softforks":             "The status of the super-majority soft-forks",
+	"softforks-bip9_softforks":        "JSON object describing active BIP0009 deployments",
+	"softforks-bip9_softforks--key":   "bip9_softforks",
+	"softforks-bip9_softforks--value": "An object describing a particular BIP009 deployment",
+	"softforks-bip9_softforks--desc":  "The status of any defined BIP0009 soft-fork deployments",
+
+	// UnifiedSoftForks help.
+	"unifiedsoftforks-softforks":        "The status of the super-majority soft-forks used by bitcoind on or after v0.19.0",
+	"unifiedsoftforks-softforks--key":   "softforks",
+	"unifiedsoftforks-softforks--value": "An object describing an active softfork deployment used by bitcoind on or after v0.19.0",
+	"unifiedsoftforks-softforks--desc":  "JSON object describing an active softfork deployment used by bitcoind on or after v0.19.0",
 
 	// TxRawResult help.
 	"txrawresult-hex":           "Hex-encoded transaction",
@@ -211,6 +216,7 @@ var helpDescsEnUS = map[string]string{
 	"txrawresult-blocktime":     "Block time in seconds since the 1 Jan 1970 GMT",
 	"txrawresult-size":          "The size of the transaction in bytes",
 	"txrawresult-vsize":         "The virtual size of the transaction in bytes",
+	"txrawresult-weight":        "The transaction's weight (between vsize*4-3 and vsize*4)",
 	"txrawresult-hash":          "The wtxid of the transaction",
 
 	// SearchRawTransactionsResult help.
@@ -227,27 +233,26 @@ var helpDescsEnUS = map[string]string{
 	"searchrawtransactionsresult-blocktime":     "Block time in seconds since the 1 Jan 1970 GMT",
 	"searchrawtransactionsresult-size":          "The size of the transaction in bytes",
 	"searchrawtransactionsresult-vsize":         "The virtual size of the transaction in bytes",
+	"searchrawtransactionsresult-weight":        "The transaction's weight (between vsize*4-3 and vsize*4)",
 
 	// GetBlockVerboseResult help.
-	"getblockverboseresult-tx": "The transaction hashes",
-
-	// GetBlockVerboseTxResult help
-	"getblockverbosetxresult-tx": "The transaction hashes (verbosity = 1) or the transactions as JSON objects (verbosity = 2)",
-
-	// GetBlockBaseVerboseResult help.
-	"getblockbaseverboseresult-hash":              "The hash of the block (same as provided)",
-	"getblockbaseverboseresult-confirmations":     "The number of confirmations",
-	"getblockbaseverboseresult-size":              "The size of the block",
-	"getblockbaseverboseresult-height":            "The height of the block in the block chain",
-	"getblockbaseverboseresult-version":           "The block version",
-	"getblockbaseverboseresult-versionHex":        "The block version in hexadecimal",
-	"getblockbaseverboseresult-merkleroot":        "Root hash of the merkle tree",
-	"getblockbaseverboseresult-time":              "The block time in seconds since 1 Jan 1970 GMT",
-	"getblockbaseverboseresult-nonce":             "The block nonce",
-	"getblockbaseverboseresult-bits":              "The bits which represent the block difficulty",
-	"getblockbaseverboseresult-difficulty":        "The proof-of-work difficulty as a multiple of the minimum difficulty",
-	"getblockbaseverboseresult-previousblockhash": "The hash of the previous block",
-	"getblockbaseverboseresult-nextblockhash":     "The hash of the next block (only if there is one)",
+	"getblockverboseresult-hash":              "The hash of the block (same as provided)",
+	"getblockverboseresult-confirmations":     "The number of confirmations",
+	"getblockverboseresult-size":              "The size of the block",
+	"getblockverboseresult-height":            "The height of the block in the block chain",
+	"getblockverboseresult-version":           "The block version",
+	"getblockverboseresult-versionHex":        "The block version in hexadecimal",
+	"getblockverboseresult-merkleroot":        "Root hash of the merkle tree",
+	"getblockverboseresult-tx":                "The transaction hashes (only when verbosetx=false)",
+	"getblockverboseresult-rawtx":             "The transactions as JSON objects (only when verbosetx=true)",
+	"getblockverboseresult-time":              "The block time in seconds since 1 Jan 1970 GMT",
+	"getblockverboseresult-nonce":             "The block nonce",
+	"getblockverboseresult-bits":              "The bits which represent the block difficulty",
+	"getblockverboseresult-difficulty":        "The proof-of-work difficulty as a multiple of the minimum difficulty",
+	"getblockverboseresult-previousblockhash": "The hash of the previous block",
+	"getblockverboseresult-nextblockhash":     "The hash of the next block (only if there is one)",
+	"getblockverboseresult-strippedsize":      "The size of the block without witness data",
+	"getblockverboseresult-weight":            "The weight of the block",
 
 	// GetBlockCountCmd help.
 	"getblockcount--synopsis": "Returns the number of blocks in the longest block chain.",
@@ -297,7 +302,7 @@ var helpDescsEnUS = map[string]string{
 	"getblocktemplateresulttx-depends": "Other transactions before this one (by 1-based index in the 'transactions'  list) that must be present in the final block if this one is",
 	"getblocktemplateresulttx-fee":     "Difference in value between transaction inputs and outputs (in Satoshi)",
 	"getblocktemplateresulttx-sigops":  "Total number of signature operations as counted for purposes of block limits",
-	"getblocktemplateresulttx-size":    "The size of the transaction",
+	"getblocktemplateresulttx-weight":  "The weight of the transaction",
 
 	// GetBlockTemplateResultAux help.
 	"getblocktemplateresultaux-flags": "Hex-encoded byte-for-byte data to include in the coinbase signature script",
@@ -327,6 +332,7 @@ var helpDescsEnUS = map[string]string{
 	"getblocktemplateresult-capabilities":               "List of server capabilities including 'proposal' to indicate support for block proposals",
 	"getblocktemplateresult-reject-reason":              "Reason the proposal was invalid as-is (only applies to proposal responses)",
 	"getblocktemplateresult-default_witness_commitment": "The witness commitment itself. Will be populated if the block has witness data",
+	"getblocktemplateresult-weightlimit":                "The current limit on the max allowed weight of a block",
 
 	// GetBlockTemplateCmd help.
 	"getblocktemplate--synopsis": "Returns a JSON object with information necessary to construct a block to mine or accepts a proposal to validate.\n" +
@@ -416,17 +422,18 @@ var helpDescsEnUS = map[string]string{
 	"getmempoolinforesult-size":  "Number of transactions in the mempool",
 
 	// GetMiningInfoResult help.
-	"getmininginforesult-blocks":           "Height of the latest best block",
-	"getmininginforesult-currentblocksize": "Size of the latest best block",
-	"getmininginforesult-currentblocktx":   "Number of transactions in the latest best block",
-	"getmininginforesult-difficulty":       "Current target difficulty",
-	"getmininginforesult-errors":           "Any current errors",
-	"getmininginforesult-generate":         "Whether or not server is set to generate coins",
-	"getmininginforesult-genproclimit":     "Number of processors to use for coin generation (-1 when disabled)",
-	"getmininginforesult-hashespersec":     "Recent hashes per second performance measurement while generating coins",
-	"getmininginforesult-networkhashps":    "Estimated network hashes per second for the most recent blocks",
-	"getmininginforesult-pooledtx":         "Number of transactions in the memory pool",
-	"getmininginforesult-testnet":          "Whether or not server is using testnet",
+	"getmininginforesult-blocks":             "Height of the latest best block",
+	"getmininginforesult-currentblocksize":   "Size of the latest best block",
+	"getmininginforesult-currentblockweight": "Weight of the latest best block",
+	"getmininginforesult-currentblocktx":     "Number of transactions in the latest best block",
+	"getmininginforesult-difficulty":         "Current target difficulty",
+	"getmininginforesult-errors":             "Any current errors",
+	"getmininginforesult-generate":           "Whether or not server is set to generate coins",
+	"getmininginforesult-genproclimit":       "Number of processors to use for coin generation (-1 when disabled)",
+	"getmininginforesult-hashespersec":       "Recent hashes per second performance measurement while generating coins",
+	"getmininginforesult-networkhashps":      "Estimated network hashes per second for the most recent blocks",
+	"getmininginforesult-pooledtx":           "Number of transactions in the memory pool",
+	"getmininginforesult-testnet":            "Whether or not server is using testnet",
 
 	// GetMiningInfoCmd help.
 	"getmininginfo--synopsis": "Returns a JSON object containing mining-related information.",
@@ -436,27 +443,6 @@ var helpDescsEnUS = map[string]string{
 	"getnetworkhashps-blocks":    "The number of blocks, or -1 for blocks since last difficulty change",
 	"getnetworkhashps-height":    "Perform estimate ending with this height or -1 for current best chain block height",
 	"getnetworkhashps--result0":  "Estimated hashes per second",
-
-	// GetNetworkInfo help.
-	"getnetworkinfo--synopsis":       "Returns an object containing various state info regarding P2P networking.",
-	"getnetworkinfo--result0--desc":  "GetNetworkInfo object",
-	"getnetworkinfo--result0--key":   "Field name",
-	"getnetworkinfo--result0--value": "Object containing the network info",
-
-	// GetNetworkInfoResult help.
-	"getnetworkinforesult-version":         "The server version",
-	"getnetworkinforesult-subversion":      "The server subversion string",
-	"getnetworkinforesult-protocolversion": "The protocol version",
-	"getnetworkinforesult-localservices":   "The services we offer to the network",
-	"getnetworkinforesult-localrelay":      "True if transaction relay is requested from peers",
-	"getnetworkinforesult-timeoffset":      "The time offset",
-	"getnetworkinforesult-connections":     "The number of connections",
-	"getnetworkinforesult-networkactive":   "Whether p2p networking is enabled",
-	"getnetworkinforesult-networks":        "Information per network",
-	"getnetworkinforesult-relayfee":        "Minimum relay fee for transactions in BTC/kB",
-	"getnetworkinforesult-incrementalfee":  "Minimum fee increment for mempool limiting or BIP 125 replacement in BTC/kB",
-	"getnetworkinforesult-localaddresses":  "List of local addresses",
-	"getnetworkinforesult-warnings":        "Any network and blockchain warnings",
 
 	// GetNetTotalsCmd help.
 	"getnettotals--synopsis": "Returns a JSON object containing network traffic statistics.",
@@ -471,7 +457,6 @@ var helpDescsEnUS = map[string]string{
 	"getpeerinforesult-addr":           "The ip address and port of the peer",
 	"getpeerinforesult-addrlocal":      "Local address",
 	"getpeerinforesult-services":       "Services bitmask which represents the services supported by the peer",
-	"getpeerinforesult-servicesStr":    "Services string which represents the services supported by the peer",
 	"getpeerinforesult-relaytxes":      "Peer has requested transactions be relayed to it",
 	"getpeerinforesult-lastsend":       "Time the last message was received in seconds since 1 Jan 1970 GMT",
 	"getpeerinforesult-lastrecv":       "Time the last message was sent in seconds since 1 Jan 1970 GMT",
@@ -487,7 +472,6 @@ var helpDescsEnUS = map[string]string{
 	"getpeerinforesult-startingheight": "The latest block height the peer knew about when the connection was established",
 	"getpeerinforesult-currentheight":  "The current height of the peer",
 	"getpeerinforesult-banscore":       "The ban score",
-	"getpeerinforesult-whitelisted":    "Peer IP is whitelisted",
 	"getpeerinforesult-feefilter":      "The requested minimum fee a transaction must have to be announced to the peer",
 	"getpeerinforesult-syncnode":       "Whether or not the peer is the sync peer",
 
@@ -503,6 +487,7 @@ var helpDescsEnUS = map[string]string{
 	"getrawmempoolverboseresult-currentpriority":  "Current priority",
 	"getrawmempoolverboseresult-depends":          "Unconfirmed transactions used as inputs for this transaction",
 	"getrawmempoolverboseresult-vsize":            "The virtual size of a transaction",
+	"getrawmempoolverboseresult-weight":           "The transaction's weight (between vsize*4-3 and vsize*4)",
 
 	// GetRawMempoolCmd help.
 	"getrawmempool--synopsis":   "Returns information about all of the transactions currently in the memory pool.",
@@ -532,17 +517,6 @@ var helpDescsEnUS = map[string]string{
 	"gettxout-txid":           "The hash of the transaction",
 	"gettxout-vout":           "The index of the output",
 	"gettxout-includemempool": "Include the mempool when true",
-
-	// GetTxOutProofCmd help.
-	"gettxoutproof--synopsis": "Returns hex encoded merkle proof for a given transaction set",
-	"gettxoutproof-txids":     "A list of transaction hashes to generate proof for",
-	"gettxoutproof-blockhash": "The block hash the transactions are in",
-	"gettxoutproof--result0":  "Hex encoded merkle proof",
-
-	// VerifyTxOutProofCmd help.
-	"verifytxoutproof--synopsis": "Verifies that a proof points to a transaction in a block, returning the transaction it commits to and throwing an RPC error if the block is not in our best chain",
-	"verifytxoutproof-proof":     "The hex-encoded proof generated by gettxoutproof",
-	"verifytxoutproof--result0":  "Serialized list of txid(s) which the proof commits to, or empty array if the proof is invalid",
 
 	// HelpCmd help.
 	"help--synopsis":   "Returns a list of all commands or help for a specified command.",
@@ -576,16 +550,9 @@ var helpDescsEnUS = map[string]string{
 	// SendRawTransactionCmd help.
 	"sendrawtransaction--synopsis":     "Submits the serialized, hex-encoded transaction to the local peer and relays it to the network.",
 	"sendrawtransaction-hextx":         "Serialized, hex-encoded signed transaction",
-	"sendrawtransaction-allowhighfees": "Whether or not to allow insanely high fees (bchd does not yet implement this parameter, so it has no effect)",
+	"sendrawtransaction-allowhighfees": "Whether or not to allow insanely high fees (btcd does not yet implement this parameter, so it has no effect)",
+	"sendrawtransaction-maxfeerate":    "Used by bitcoind on or after v0.19.0",
 	"sendrawtransaction--result0":      "The hash of the transaction",
-
-	// ReconsiderBlockCmd
-	"reconsiderblock--synopsis": "Reconsider a block for validation.",
-	"reconsiderblock-blockhash": "Hash of the block you want to reconsider",
-
-	// InvalidateBlockCmd
-	"invalidateblock--synopsis": "Invalidate a block.",
-	"invalidateblock-blockhash": "Hash of the block you want to invalidate",
 
 	// SetGenerateCmd help.
 	"setgenerate--synopsis":    "Set the server to generate coins (mine) or not.",
@@ -593,8 +560,8 @@ var helpDescsEnUS = map[string]string{
 	"setgenerate-genproclimit": "The number of processors (cores) to limit generation to or -1 for default",
 
 	// StopCmd help.
-	"stop--synopsis": "Shutdown bchd.",
-	"stop--result0":  "The string 'bchd stopping.'",
+	"stop--synopsis": "Shutdown btcd.",
+	"stop--result0":  "The string 'btcd stopping.'",
 
 	// SubmitBlockOptions help.
 	"submitblockoptions-workid": "This parameter is currently ignored",
@@ -618,7 +585,7 @@ var helpDescsEnUS = map[string]string{
 	// VerifyChainCmd help.
 	"verifychain--synopsis": "Verifies the block chain database.\n" +
 		"The actual checks performed by the checklevel parameter are implementation specific.\n" +
-		"For bchd this is:\n" +
+		"For btcd this is:\n" +
 		"checklevel=0 - Look up each block and ensure it can be loaded from the database.\n" +
 		"checklevel=1 - Perform basic context-free sanity checks on each block.",
 	"verifychain-checklevel": "How thorough the block verification is",
@@ -665,7 +632,7 @@ var helpDescsEnUS = map[string]string{
 	"outpoint-index": "The index of the outpoint",
 
 	// NotifySpentCmd help.
-	"notifyspent--synopsis": "Send a redeemingtx notification when a transaction spending an outpoint appears in mempool (if relayed to this bchd instance) and when such a transaction first appears in a newly-attached block.",
+	"notifyspent--synopsis": "Send a redeemingtx notification when a transaction spending an outpoint appears in mempool (if relayed to this btcd instance) and when such a transaction first appears in a newly-attached block.",
 	"notifyspent-outpoints": "List of transaction outpoints to monitor.",
 
 	// StopNotifySpentCmd help.
@@ -730,7 +697,7 @@ var rpcResultTypes = map[string][]interface{}{
 	"getaddednodeinfo":      {(*[]string)(nil), (*[]btcjson.GetAddedNodeInfoResult)(nil)},
 	"getbestblock":          {(*btcjson.GetBestBlockResult)(nil)},
 	"getbestblockhash":      {(*string)(nil)},
-	"getblock":              {(*string)(nil), (*btcjson.GetBlockVerboseResult)(nil), (*btcjson.GetBlockVerboseTxResult)(nil)},
+	"getblock":              {(*string)(nil), (*btcjson.GetBlockVerboseResult)(nil)},
 	"getblockcount":         {(*int64)(nil)},
 	"getblockhash":          {(*string)(nil)},
 	"getblockheader":        {(*string)(nil), (*btcjson.GetBlockHeaderVerboseResult)(nil)},
@@ -748,18 +715,14 @@ var rpcResultTypes = map[string][]interface{}{
 	"getmempoolinfo":        {(*btcjson.GetMempoolInfoResult)(nil)},
 	"getmininginfo":         {(*btcjson.GetMiningInfoResult)(nil)},
 	"getnettotals":          {(*btcjson.GetNetTotalsResult)(nil)},
-	"getnetworkhashps":      {(*float64)(nil)},
-	"getnetworkinfo":        {(*map[string]btcjson.GetNetworkInfoResult)(nil)},
+	"getnetworkhashps":      {(*int64)(nil)},
 	"getpeerinfo":           {(*[]btcjson.GetPeerInfoResult)(nil)},
 	"getrawmempool":         {(*[]string)(nil), (*btcjson.GetRawMempoolVerboseResult)(nil)},
 	"getrawtransaction":     {(*string)(nil), (*btcjson.TxRawResult)(nil)},
 	"gettxout":              {(*btcjson.GetTxOutResult)(nil)},
-	"gettxoutproof":         {(*string)(nil)},
 	"node":                  nil,
 	"help":                  {(*string)(nil), (*string)(nil)},
-	"invalidateblock":       nil,
 	"ping":                  nil,
-	"reconsiderblock":       nil,
 	"searchrawtransactions": {(*string)(nil), (*[]btcjson.SearchRawTransactionsResult)(nil)},
 	"sendrawtransaction":    {(*string)(nil)},
 	"setgenerate":           nil,
@@ -769,7 +732,6 @@ var rpcResultTypes = map[string][]interface{}{
 	"validateaddress":       {(*btcjson.ValidateAddressChainResult)(nil)},
 	"verifychain":           {(*bool)(nil)},
 	"verifymessage":         {(*bool)(nil)},
-	"verifytxoutproof":      {(*[]string)(nil)},
 	"version":               {(*map[string]btcjson.VersionResult)(nil)},
 
 	// Websocket commands.
@@ -856,7 +818,7 @@ func (c *helpCacher) rpcUsage(includeWebsockets bool) (string, error) {
 		}
 	}
 
-	sort.Strings(usageTexts)
+	sort.Sort(sort.StringSlice(usageTexts))
 	c.usage = strings.Join(usageTexts, "\n")
 	return c.usage, nil
 }

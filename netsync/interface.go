@@ -24,7 +24,7 @@ type PeerNotifier interface {
 
 	RelayInventory(invVect *wire.InvVect, data interface{})
 
-	TransactionConfirmed(tx *bchutil.Tx)
+	TransactionConfirmed(tx *dogutil.Tx)
 }
 
 // Config is a configuration struct used to initialize a new SyncManager.
@@ -38,8 +38,4 @@ type Config struct {
 	MaxPeers           int
 
 	FeeEstimator *mempool.FeeEstimator
-
-	MinSyncPeerNetworkSpeed uint64
-
-	FastSyncMode bool
 }

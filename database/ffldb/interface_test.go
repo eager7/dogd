@@ -34,10 +34,7 @@ import (
 
 var (
 	// blockDataNet is the expected network in the test block data.
-	// The serialized test data uses the Bitcoin Core network magic.
-	// Eventually we should create new testdata using the Bitcoin Cash
-	// magic.
-	blockDataNet wire.BitcoinNet = 0xd9b4bef9
+	blockDataNet = wire.MainNet
 
 	// blockDataFile is the path to a file containing the first 256 blocks
 	// of the block chain.
@@ -49,7 +46,7 @@ var (
 
 // loadBlocks loads the blocks contained in the testdata directory and returns
 // a slice of them.
-func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*bchutil.Block, error) {
+func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*dogutil.Block, error) {
 	// Open the file that contains the blocks for reading.
 	fi, err := os.Open(dataFile)
 	if err != nil {
@@ -65,8 +62,8 @@ func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*bchu
 	dr := bzip2.NewReader(fi)
 
 	// Set the first block as the genesis block.
-	blocks := make([]*bchutil.Block, 0, 256)
-	genesis := bchutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
+	blocks := make([]*dogutil.Block, 0, 256)
+	genesis := dogutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
 	blocks = append(blocks, genesis)
 
 	// Load the remaining blocks.
@@ -105,7 +102,7 @@ func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*bchu
 		}
 
 		// Deserialize and store the block.
-		block, err := bchutil.NewBlockFromBytes(blockBytes)
+		block, err := dogutil.NewBlockFromBytes(blockBytes)
 		if err != nil {
 			t.Errorf("Failed to parse block %v: %v", height, err)
 			return nil, err
@@ -142,7 +139,7 @@ type testContext struct {
 	db          database.DB
 	bucketDepth int
 	isWritable  bool
-	blocks      []*bchutil.Block
+	blocks      []*dogutil.Block
 }
 
 // keyPair houses a key/value pair.  It is used over maps so ordering can be
@@ -1302,8 +1299,7 @@ func testFetchBlockIO(tc *testContext, tx database.Tx) bool {
 			return false
 		}
 
-		// Ensure the block header fetched from the database matches the
-		// expected bytes.
+		// Ensure block hash exists as expected.
 		hasBlock, err := tx.HasBlock(blockHash)
 		if err != nil {
 			tc.t.Errorf("HasBlock(%s): unexpected error: %v",
@@ -1746,6 +1742,7 @@ func testClosedTxInterface(tc *testContext, tx database.Tx) bool {
 	}
 
 	// Ensure Get returns expected error.
+	testName = "Get on closed tx"
 	if k := bucket.Get(keyName); k != nil {
 		tc.t.Errorf("Get: did not return nil on closed tx")
 		return false

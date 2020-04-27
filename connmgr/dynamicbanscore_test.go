@@ -38,8 +38,8 @@ func TestDynamicBanScoreLifetime(t *testing.T) {
 	var bs DynamicBanScore
 	base := time.Now()
 
-	bs.increase(0, math.MaxUint32, base)
-	r := bs.int(base.Add(Lifetime * time.Second))
+	r := bs.increase(0, math.MaxUint32, base)
+	r = bs.int(base.Add(Lifetime * time.Second))
 	if r != 3 { // 3, not 4 due to precision loss and truncating 3.999...
 		t.Errorf("Pre max age check with MaxUint32 failed - %d", r)
 	}
@@ -65,4 +65,16 @@ func TestDynamicBanScoreReset(t *testing.T) {
 	if bs.Int() != 0 {
 		t.Errorf("Failed to reset ban score.")
 	}
+}
+
+// TestDynamicBanScoreString
+func TestDynamicBanScoreString(t *testing.T) {
+	var bs DynamicBanScore
+	base := time.Now()
+
+	r := bs.increase(100, 50, base)
+	if r != 150 {
+		t.Errorf("Unexpected result %d after ban score increase.", r)
+	}
+	t.Log(bs.String())
 }

@@ -7,9 +7,10 @@ package peer
 import (
 	"crypto/rand"
 	"fmt"
+	"testing"
+
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/wire"
-	"testing"
 )
 
 // TestMruInventoryMap ensures the MruInventoryMap behaves as expected including

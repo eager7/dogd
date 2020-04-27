@@ -1,31 +1,18 @@
 language: go
-go_import_path: github.com/eager7/dogd
-go:
-  - "1.12.7"
-
-sudo: false
-
 cache:
   directories:
+    - $GOCACHE
     - $GOPATH/pkg/mod
-    - /home/travis/.cache/go-build
-
-env:
-  - GO111MODULE=on
-
-before_install:
-  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.17.1
-
+    - $GOPATH/github.com/golang
+    - $GOPATH/gopkg.in/alecthomas
+go:
+  - "1.13.x"
+sudo: false
 install:
-  - env GO111MODULE=on go build
-  - env GO111MODULE=on go install . ./cmd/...
-
+  - export PATH=$PATH:$PWD/linux-amd64/
+  - GO111MODULE=on go install . ./cmd/...
+  - GO111MODULE=off go get -u gopkg.in/alecthomas/gometalinter.v2
+  - GO111MODULE=off gometalinter.v2 --install
 script:
   - export PATH=$PATH:$HOME/gopath/bin
   - ./goclean.sh
-
-after_script:
-  - if [ "$TRAVIS_GO_VERSION" = "1.12.7" ] && [ "$TRAVIS_OS_NAME" = "linux" ] && [ "$TRAVIS_TAG" != "" ]; then go get github.com/inconshreveable/mousetrap; fi
-  - if [ "$TRAVIS_GO_VERSION" = "1.12.7" ] && [ "$TRAVIS_OS_NAME" = "linux" ] && [ "$TRAVIS_TAG" != "" ]; then go get github.com/mitchellh/gox; fi
-  - if [ "$TRAVIS_GO_VERSION" = "1.12.7" ] && [ "$TRAVIS_OS_NAME" = "linux" ] && [ "$TRAVIS_TAG" != "" ]; then go get github.com/tcnksm/ghr; fi
-  - if [ "$TRAVIS_GO_VERSION" = "1.12.7" ] && [ "$TRAVIS_OS_NAME" = "linux" ] && [ "$TRAVIS_TAG" != "" ]; then make compile; ghr --username gcash --token $GITHUB_TOKEN --replace $TRAVIS_TAG pkg/; fi

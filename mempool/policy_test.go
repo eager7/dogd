@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/eager7/dogd/bchec"
+	"github.com/eager7/dogd/btcec"
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/txscript"
@@ -22,7 +22,7 @@ func TestCalcMinRequiredTxRelayFee(t *testing.T) {
 	tests := []struct {
 		name     string         // test description.
 		size     int64          // Transaction size in bytes.
-		relayFee bchutil.Amount // minimum relay transaction fee.
+		relayFee dogutil.Amount // minimum relay transaction fee.
 		want     int64          // Expected fee.
 	}{
 		{
@@ -41,15 +41,15 @@ func TestCalcMinRequiredTxRelayFee(t *testing.T) {
 		},
 		{
 			"max standard tx size with default minimum relay fee",
-			maxStandardTxSize,
+			maxStandardTxWeight / 4,
 			DefaultMinRelayTxFee,
-			1000000,
+			100000,
 		},
 		{
 			"max standard tx size with max satoshi relay fee",
-			maxStandardTxSize,
-			bchutil.MaxSatoshi,
-			bchutil.MaxSatoshi,
+			maxStandardTxWeight / 4,
+			dogutil.MaxSatoshi,
+			dogutil.MaxSatoshi,
 		},
 		{
 			"1500 bytes with 5000 relay fee",
@@ -98,7 +98,7 @@ func TestCalcMinRequiredTxRelayFee(t *testing.T) {
 func TestCheckPkScriptStandard(t *testing.T) {
 	var pubKeys [][]byte
 	for i := 0; i < 4; i++ {
-		pk, err := bchec.NewPrivateKey(bchec.S256())
+		pk, err := btcec.NewPrivateKey(btcec.S256())
 		if err != nil {
 			t.Fatalf("TestCheckPkScriptStandard NewPrivateKey failed: %v",
 				err)
@@ -215,7 +215,7 @@ func TestDust(t *testing.T) {
 	tests := []struct {
 		name     string // test description
 		txOut    wire.TxOut
-		relayFee bchutil.Amount // minimum relay transaction fee.
+		relayFee dogutil.Amount // minimum relay transaction fee.
 		isDust   bool
 	}{
 		{
@@ -247,8 +247,8 @@ func TestDust(t *testing.T) {
 		{
 			// Maximum allowed value is never dust.
 			"max satoshi amount is never dust",
-			wire.TxOut{Value: bchutil.MaxSatoshi, PkScript: pkScript},
-			bchutil.MaxSatoshi,
+			wire.TxOut{Value: dogutil.MaxSatoshi, PkScript: pkScript},
+			dogutil.MaxSatoshi,
 			false,
 		},
 		{
@@ -292,7 +292,7 @@ func TestCheckTransactionStandard(t *testing.T) {
 		Sequence:         wire.MaxTxInSequenceNum,
 	}
 	addrHash := [20]byte{0x01}
-	addr, err := bchutil.NewAddressPubKeyHash(addrHash[:],
+	addr, err := dogutil.NewAddressPubKeyHash(addrHash[:],
 		&chaincfg.TestNet3Params)
 	if err != nil {
 		t.Fatalf("NewAddressPubKeyHash: unexpected error: %v", err)
@@ -302,7 +302,7 @@ func TestCheckTransactionStandard(t *testing.T) {
 		t.Fatalf("PayToAddrScript: unexpected error: %v", err)
 	}
 	dummyTxOut := wire.TxOut{
-		Value:    100000000, // 1 BCH
+		Value:    100000000, // 1 BTC
 		PkScript: dummyPkScript,
 	}
 
@@ -360,7 +360,7 @@ func TestCheckTransactionStandard(t *testing.T) {
 				TxOut: []*wire.TxOut{{
 					Value: 0,
 					PkScript: bytes.Repeat([]byte{0x00},
-						maxStandardTxSize+1),
+						(maxStandardTxWeight/4)+1),
 				}},
 				LockTime: 0,
 			},
@@ -464,78 +464,12 @@ func TestCheckTransactionStandard(t *testing.T) {
 			height:     300000,
 			isStandard: true,
 		},
-		{
-			name: "One nulldata output with multiple data pushes (standard)",
-			tx: wire.MsgTx{
-				Version: 1,
-				TxIn:    []*wire.TxIn{&dummyTxIn},
-				TxOut: []*wire.TxOut{{
-					Value: 0,
-					PkScript: []byte{
-						txscript.OP_RETURN,
-						txscript.OP_DATA_2, 0xff, 0xff,
-						txscript.OP_DATA_3, 0xff, 0xff, 0xff,
-						txscript.OP_PUSHDATA4, 0x01, 0x00, 0x00, 0x00,
-						0x01,
-					},
-				}},
-				LockTime: 0,
-			},
-			height:     300000,
-			isStandard: true,
-		},
-		{
-			name: "One nulldata output exceeding MaxDataCarrierSize (non-standard)",
-			tx: wire.MsgTx{
-				Version: 1,
-				TxIn:    []*wire.TxIn{&dummyTxIn},
-				TxOut: []*wire.TxOut{{
-					Value: 0,
-					PkScript: []byte{
-						txscript.OP_RETURN,
-						txscript.OP_PUSHDATA1, 0xdd,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-						0x00, 0x00, 0x00, 0x00, 0x00,
-					},
-				}},
-				LockTime: 0,
-			},
-			height:     300000,
-			isStandard: false,
-			code:       wire.RejectNonstandard,
-		},
 	}
 
 	pastMedianTime := time.Now()
 	for _, test := range tests {
 		// Ensure standardness is as expected.
-		err := checkTransactionStandard(bchutil.NewTx(&test.tx),
+		err := checkTransactionStandard(dogutil.NewTx(&test.tx),
 			test.height, pastMedianTime, DefaultMinRelayTxFee, 1)
 		if err == nil && test.isStandard {
 			// Test passes since function returned standard for a

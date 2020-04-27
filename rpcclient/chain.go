@@ -97,7 +97,7 @@ func (c *Client) GetBlockAsync(blockHash *chainhash.Hash) FutureGetBlockResult {
 		hash = blockHash.String()
 	}
 
-	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Bool(false), nil)
+	cmd := btcjson.NewGetBlockCmd(hash, nil)
 	return c.sendCmd(cmd)
 }
 
@@ -135,13 +135,14 @@ func (r FutureGetBlockVerboseResult) Receive() (*btcjson.GetBlockVerboseResult, 
 // the returned instance.
 //
 // See GetBlockVerbose for the blocking version and more details.
-func (c *Client) GetBlockVerboseAsync(blockHash *chainhash.Hash, verboseTx bool) FutureGetBlockVerboseResult {
+func (c *Client) GetBlockVerboseAsync(blockHash *chainhash.Hash) FutureGetBlockVerboseResult {
 	hash := ""
 	if blockHash != nil {
 		hash = blockHash.String()
 	}
-
-	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Bool(true), &verboseTx)
+	// From the bitcoin-cli getblock documentation:
+	// "If verbosity is 1, returns an Object with information about block ."
+	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Int(1))
 	return c.sendCmd(cmd)
 }
 
@@ -150,28 +151,24 @@ func (c *Client) GetBlockVerboseAsync(blockHash *chainhash.Hash, verboseTx bool)
 //
 // See GetBlockVerboseTx to retrieve transaction data structures as well.
 // See GetBlock to retrieve a raw block instead.
-func (c *Client) GetBlockVerbose(blockHash *chainhash.Hash, verboseTx bool) (*btcjson.GetBlockVerboseResult, error) {
-	return c.GetBlockVerboseAsync(blockHash, verboseTx).Receive()
+func (c *Client) GetBlockVerbose(blockHash *chainhash.Hash) (*btcjson.GetBlockVerboseResult, error) {
+	return c.GetBlockVerboseAsync(blockHash).Receive()
 }
 
-// FutureGetBlockVerboseTxResult is a future promise to deliver the result of a
-// GetBlockVerboseTxAsync RPC invocation (or an applicable error).
 type FutureGetBlockVerboseTxResult chan *response
 
-// Receive waits for the response promised by the future and returns the data
-// structure from the server with information about the requested block.
 func (r FutureGetBlockVerboseTxResult) Receive() (*btcjson.GetBlockVerboseTxResult, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return nil, err
 	}
 
-	// Unmarshal the raw result into a BlockResult.
 	var blockResult btcjson.GetBlockVerboseTxResult
 	err = json.Unmarshal(res, &blockResult)
 	if err != nil {
 		return nil, err
 	}
+
 	return &blockResult, nil
 }
 
@@ -181,13 +178,13 @@ func (r FutureGetBlockVerboseTxResult) Receive() (*btcjson.GetBlockVerboseTxResu
 //
 // See GetBlockVerboseTx or the blocking version and more details.
 func (c *Client) GetBlockVerboseTxAsync(blockHash *chainhash.Hash) FutureGetBlockVerboseTxResult {
-
 	hash := ""
 	if blockHash != nil {
 		hash = blockHash.String()
 	}
-
-	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Bool(true), btcjson.Bool(true))
+	// From the bitcoin-cli getblock documentation:
+	// "If verbosity is 2, returns an Object with information about block  and information about each transaction."
+	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Int(2))
 
 	return c.sendCmd(cmd)
 }
@@ -276,21 +273,73 @@ func (c *Client) GetDifficulty() (float64, error) {
 
 // FutureGetBlockChainInfoResult is a promise to deliver the result of a
 // GetBlockChainInfoAsync RPC invocation (or an applicable error).
-type FutureGetBlockChainInfoResult chan *response
+type FutureGetBlockChainInfoResult struct {
+	client   *Client
+	Response chan *response
+}
 
-// Receive waits for the response promised by the future and returns chain info
-// result provided by the server.
-func (r FutureGetBlockChainInfoResult) Receive() (*btcjson.GetBlockChainInfoResult, error) {
-	res, err := receiveFuture(r)
-	if err != nil {
-		return nil, err
-	}
-
+// unmarshalPartialGetBlockChainInfoResult unmarshals the response into an
+// instance of GetBlockChainInfoResult without populating the SoftForks and
+// UnifiedSoftForks fields.
+func unmarshalPartialGetBlockChainInfoResult(res []byte) (*btcjson.GetBlockChainInfoResult, error) {
 	var chainInfo btcjson.GetBlockChainInfoResult
 	if err := json.Unmarshal(res, &chainInfo); err != nil {
 		return nil, err
 	}
 	return &chainInfo, nil
+}
+
+// unmarshalGetBlockChainInfoResultSoftForks properly unmarshals the softforks
+// related fields into the GetBlockChainInfoResult instance.
+func unmarshalGetBlockChainInfoResultSoftForks(chainInfo *btcjson.GetBlockChainInfoResult,
+	version BackendVersion, res []byte) error {
+
+	switch version {
+	// Versions of bitcoind on or after v0.19.0 use the unified format.
+	case BitcoindPost19:
+		var softForks btcjson.UnifiedSoftForks
+		if err := json.Unmarshal(res, &softForks); err != nil {
+			return err
+		}
+		chainInfo.UnifiedSoftForks = &softForks
+
+	// All other versions use the original format.
+	default:
+		var softForks btcjson.SoftForks
+		if err := json.Unmarshal(res, &softForks); err != nil {
+			return err
+		}
+		chainInfo.SoftForks = &softForks
+	}
+
+	return nil
+}
+
+// Receive waits for the response promised by the future and returns chain info
+// result provided by the server.
+func (r FutureGetBlockChainInfoResult) Receive() (*btcjson.GetBlockChainInfoResult, error) {
+	res, err := receiveFuture(r.Response)
+	if err != nil {
+		return nil, err
+	}
+	chainInfo, err := unmarshalPartialGetBlockChainInfoResult(res)
+	if err != nil {
+		return nil, err
+	}
+
+	// Inspect the version to determine how we'll need to parse the
+	// softforks from the response.
+	version, err := r.client.BackendVersion()
+	if err != nil {
+		return nil, err
+	}
+
+	err = unmarshalGetBlockChainInfoResultSoftForks(chainInfo, version, res)
+	if err != nil {
+		return nil, err
+	}
+
+	return chainInfo, nil
 }
 
 // GetBlockChainInfoAsync returns an instance of a type that can be used to get
@@ -300,7 +349,10 @@ func (r FutureGetBlockChainInfoResult) Receive() (*btcjson.GetBlockChainInfoResu
 // See GetBlockChainInfo for the blocking version and more details.
 func (c *Client) GetBlockChainInfoAsync() FutureGetBlockChainInfoResult {
 	cmd := btcjson.NewGetBlockChainInfoCmd()
-	return c.sendCmd(cmd)
+	return FutureGetBlockChainInfoResult{
+		client:   c,
+		Response: c.sendCmd(cmd),
+	}
 }
 
 // GetBlockChainInfo returns information related to the processing state of
@@ -617,6 +669,41 @@ func (c *Client) EstimateFee(numBlocks int64) (float64, error) {
 	return c.EstimateFeeAsync(numBlocks).Receive()
 }
 
+// FutureEstimateFeeResult is a future promise to deliver the result of a
+// EstimateSmartFeeAsync RPC invocation (or an applicable error).
+type FutureEstimateSmartFeeResult chan *response
+
+// Receive waits for the response promised by the future and returns the
+// estimated fee.
+func (r FutureEstimateSmartFeeResult) Receive() (*btcjson.EstimateSmartFeeResult, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	var verified btcjson.EstimateSmartFeeResult
+	err = json.Unmarshal(res, &verified)
+	if err != nil {
+		return nil, err
+	}
+	return &verified, nil
+}
+
+// EstimateSmartFeeAsync returns an instance of a type that can be used to get the
+// result of the RPC at some future time by invoking the Receive function on the
+// returned instance.
+//
+// See EstimateSmartFee for the blocking version and more details.
+func (c *Client) EstimateSmartFeeAsync(confTarget int64, mode *btcjson.EstimateSmartFeeMode) FutureEstimateSmartFeeResult {
+	cmd := btcjson.NewEstimateSmartFeeCmd(confTarget, mode)
+	return c.sendCmd(cmd)
+}
+
+// EstimateSmartFee requests the server to estimate a fee level based on the given parameters.
+func (c *Client) EstimateSmartFee(confTarget int64, mode *btcjson.EstimateSmartFeeMode) (*btcjson.EstimateSmartFeeResult, error) {
+	return c.EstimateSmartFeeAsync(confTarget, mode).Receive()
+}
+
 // FutureVerifyChainResult is a future promise to deliver the result of a
 // VerifyChainAsync, VerifyChainLevelAsyncRPC, or VerifyChainBlocksAsync
 // invocation (or an applicable error).
@@ -804,7 +891,7 @@ func (c *Client) RescanBlocksAsync(blockHashes []chainhash.Hash) FutureRescanBlo
 // the client's loaded transaction filter.  The blocks do not need to be on the
 // main chain, but they do need to be adjacent to each other.
 //
-// NOTE: This is a gcash extension ported from
+// NOTE: This is a btcsuite extension ported from
 // github.com/decred/dcrrpcclient.
 func (c *Client) RescanBlocks(blockHashes []chainhash.Hash) ([]btcjson.RescannedBlock, error) {
 	return c.RescanBlocksAsync(blockHashes).Receive()
@@ -951,115 +1038,43 @@ func (c *Client) GetCFilterHeader(blockHash *chainhash.Hash,
 	return c.GetCFilterHeaderAsync(blockHash, filterType).Receive()
 }
 
-// FutureGetMempoolInfoResult is a future promize to deliver the result of a
-// GetMempoolInfoAsync RPC invocation (or an applicable error).
-type FutureGetMempoolInfoResult chan *response
+// FutureGetBlockStatsResult is a future promise to deliver the result of a
+// GetBlockStatsAsync RPC invocation (or an applicable error).
+type FutureGetBlockStatsResult chan *response
 
-// Receive waits for the response promised by the future and returns a data
-// structure with information about the details of the memory pool
-func (r FutureGetMempoolInfoResult) Receive() (*btcjson.GetMempoolInfoResult, error) {
+// Receive waits for the response promised by the future and returns statistics
+// of a block at a certain height.
+func (r FutureGetBlockStatsResult) Receive() (*btcjson.GetBlockStatsResult, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return nil, err
 	}
 
-	// Unmarshal result as a getmempoolinfo result object.
-	var mempoolInfoResult btcjson.GetMempoolInfoResult
-	err = json.Unmarshal(res, &mempoolInfoResult)
+	var blockStats btcjson.GetBlockStatsResult
+	err = json.Unmarshal(res, &blockStats)
 	if err != nil {
 		return nil, err
 	}
 
-	return &mempoolInfoResult, nil
+	return &blockStats, nil
 }
 
-// GetMempoolInfoAsync returns and instance of a type that can be used to get the
-// result of the RPC at some future time by invoking the Receive function on the
-// returned instance.
+// GetBlockStatsAsync returns an instance of a type that can be used to get
+// the result of the RPC at some future time by invoking the Receive function on
+// the returned instance.
 //
-// See GetMempoolInfo for the blocking version and more details.
-func (c *Client) GetMempoolInfoAsync() FutureGetMempoolInfoResult {
-	cmd := btcjson.NewGetMempoolInfoCmd()
+// See GetBlockStats or the blocking version and more details.
+func (c *Client) GetBlockStatsAsync(hashOrHeight interface{}, stats *[]string) FutureGetBlockStatsResult {
+	if hash, ok := hashOrHeight.(*chainhash.Hash); ok {
+		hashOrHeight = hash.String()
+	}
+
+	cmd := btcjson.NewGetBlockStatsCmd(btcjson.HashOrHeight{Value: hashOrHeight}, stats)
 	return c.sendCmd(cmd)
 }
 
-// GetMempoolInfo returns the number of transactions in the mempool and byte
-// size it consumes
-func (c *Client) GetMempoolInfo() (*btcjson.GetMempoolInfoResult, error) {
-	return c.GetMempoolInfoAsync().Receive()
-}
-
-// FutureGetTxOutProofResult is a future promise to deliver the result of a
-// GetTxOutProofAsync RPC invocation (or an applicable error).
-type FutureGetTxOutProofResult chan *response
-
-// Receive waits for the response promised by the future and returns the merkle
-// transaction proof hex encoded
-func (r FutureGetTxOutProofResult) Receive() (string, error) {
-	res, err := receiveFuture(r)
-	if err != nil {
-		return "", err
-	}
-
-	// Unmarshal result as string
-	var proof string
-	err = json.Unmarshal(res, &proof)
-	if err != nil {
-		return "", err
-	}
-
-	return proof, nil
-}
-
-// GetTxOutProofAsync returns an instance of a type that can be used to get the
-// result of the RPC at some future time by invoking the Receive function on the
-// returned instance.
-//
-// See GetTxOutProof for the blocking version and more details.
-func (c *Client) GetTxOutProofAsync(txIDs []string, blockHash *string) FutureGetTxOutProofResult {
-	cmd := btcjson.NewGetTxOutProofCmd(txIDs, blockHash)
-	return c.sendCmd(cmd)
-}
-
-// GetTxOutProof returns the merkle transaction proof hex encoded
-func (c *Client) GetTxOutProof(txIDs []string, blockHash *string) (string, error) {
-	return c.GetTxOutProofAsync(txIDs, blockHash).Receive()
-}
-
-// FutureVerifyTxOutProofResult is a future promise to deliver the result of a
-// VerifyTxOutProofAsync RPC invocation (or an applicable error).
-type FutureVerifyTxOutProofResult chan *response
-
-// Receive waits for the response promised by the future and returns the list
-// of transactions matched in the merkle proof provided
-func (r FutureVerifyTxOutProofResult) Receive() ([]string, error) {
-	res, err := receiveFuture(r)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal result as []string
-	var txIDs []string
-	err = json.Unmarshal(res, &txIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	return txIDs, nil
-}
-
-// VerifyTxOutProofAsync returns an instance of a type that can be used to get the
-// result of the RPC at some future time by invoking the Receive function on the
-// returned instance.
-//
-// See VerifyTxOutProof for the blocking version and more details.
-func (c *Client) VerifyTxOutProofAsync(proof string) FutureVerifyTxOutProofResult {
-	cmd := btcjson.NewVerifyTxOutProofCmd(proof)
-	return c.sendCmd(cmd)
-}
-
-// VerifyTxOutProof returns the list of matched transactions from the provided
-// merkle proof
-func (c *Client) VerifyTxOutProof(proof string) ([]string, error) {
-	return c.VerifyTxOutProofAsync(proof).Receive()
+// GetBlockStats returns block statistics. First argument specifies height or hash of the target block.
+// Second argument allows to select certain stats to return.
+func (c *Client) GetBlockStats(hashOrHeight interface{}, stats *[]string) (*btcjson.GetBlockStatsResult, error) {
+	return c.GetBlockStatsAsync(hashOrHeight, stats).Receive()
 }

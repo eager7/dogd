@@ -14,6 +14,11 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/eager7/dogd/chaincfg/chainhash"
+	"github.com/eager7/dogd/database"
+	"github.com/eager7/dogd/database/internal/treap"
+	"github.com/eager7/dogd/wire"
+	"github.com/eager7/dogutil"
 	"github.com/btcsuite/goleveldb/leveldb"
 	"github.com/btcsuite/goleveldb/leveldb/comparer"
 	ldberrors "github.com/btcsuite/goleveldb/leveldb/errors"
@@ -21,11 +26,6 @@ import (
 	"github.com/btcsuite/goleveldb/leveldb/iterator"
 	"github.com/btcsuite/goleveldb/leveldb/opt"
 	"github.com/btcsuite/goleveldb/leveldb/util"
-	"github.com/eager7/dogd/chaincfg/chainhash"
-	"github.com/eager7/dogd/database"
-	"github.com/eager7/dogd/database/internal/treap"
-	"github.com/eager7/dogd/wire"
-	"github.com/eager7/dogutil"
 )
 
 const (
@@ -43,13 +43,6 @@ const (
 	// The serialized block index row format is:
 	//   <blocklocation><blockheader>
 	blockHdrOffset = blockLocSize
-
-	// bytesMiB is the number of bytes in a mebibyte.
-	bytesMiB = 1024 * 1024
-
-	// minAvailableSpaceUpdate is the minimum space available (in bytes) to
-	// allow a write transaction.  The value is 25 MiB.
-	minAvailableSpaceUpdate = 25 * bytesMiB
 )
 
 var (
@@ -952,13 +945,12 @@ func (b *bucket) Delete(key []byte) error {
 // pendingBlock houses a block that will be written to disk when the database
 // transaction is committed.
 type pendingBlock struct {
-	hash   *chainhash.Hash
-	height uint32
-	bytes  []byte
+	hash  *chainhash.Hash
+	bytes []byte
 }
 
 // transaction represents a database transaction.  It can either be read-only or
-// read-write and implements the database.Bucket interface.  The transaction
+// read-write and implements the database.Tx interface.  The transaction
 // provides a root bucket against which all read and writes occur.
 type transaction struct {
 	managed        bool             // Is the transaction managed?
@@ -973,9 +965,6 @@ type transaction struct {
 	// kept to allow quick lookups of pending data by block hash.
 	pendingBlocks    map[chainhash.Hash]int
 	pendingBlockData []pendingBlock
-
-	// Block heights that need to be deleted if possible
-	pendingBlockDeletes []uint32
 
 	// Keys that need to be stored or deleted on commit.
 	pendingKeys   *treap.Mutable
@@ -1157,7 +1146,7 @@ func (tx *transaction) hasBlock(hash *chainhash.Hash) bool {
 //   - ErrTxClosed if the transaction has already been closed
 //
 // This function is part of the database.Tx interface implementation.
-func (tx *transaction) StoreBlock(block *bchutil.Block) error {
+func (tx *transaction) StoreBlock(block *dogutil.Block) error {
 	// Ensure transaction state is valid.
 	if err := tx.checkClosed(); err != nil {
 		return err
@@ -1183,8 +1172,6 @@ func (tx *transaction) StoreBlock(block *bchutil.Block) error {
 		return makeDbErr(database.ErrDriverSpecific, str, err)
 	}
 
-	blockHeight := block.Height()
-
 	// Add the block to be stored to the list of pending blocks to store
 	// when the transaction is committed.  Also, add it to pending blocks
 	// map so it is easy to determine the block is pending based on the
@@ -1194,40 +1181,10 @@ func (tx *transaction) StoreBlock(block *bchutil.Block) error {
 	}
 	tx.pendingBlocks[*blockHash] = len(tx.pendingBlockData)
 	tx.pendingBlockData = append(tx.pendingBlockData, pendingBlock{
-		hash:   blockHash,
-		height: uint32(blockHeight),
-		bytes:  blockBytes,
+		hash:  blockHash,
+		bytes: blockBytes,
 	})
 	log.Tracef("Added block %s to pending blocks", blockHash)
-
-	return nil
-}
-
-// DeleteBlock deletes the provided block from the database if it
-// exists. Not error will be returned if it does not exist.
-//
-// The interface contract guarantees at least the following errors will
-// be returned (other implementation-specific errors are possible):
-//   - ErrTxNotWritable if attempted against a read-only transaction
-//   - ErrTxClosed if the transaction has already been closed
-//
-// Other errors are possible depending on the implementation.
-func (tx *transaction) DeleteBlocks(beforeHeight uint32) error {
-	// Ensure transaction state is valid.
-	if err := tx.checkClosed(); err != nil {
-		return err
-	}
-
-	// Ensure the transaction is writable.
-	if !tx.writable {
-		str := "delete block requires a writable database transaction"
-		return makeDbErr(database.ErrTxNotWritable, str, nil)
-	}
-
-	// Add the block to be deleted to the list of pending delete blocks to delete
-	// when the transaction is committed.
-	tx.pendingBlockDeletes = append(tx.pendingBlockDeletes, beforeHeight)
-	log.Tracef("Added block height %d to pending delete blocks", beforeHeight)
 
 	return nil
 }
@@ -1682,7 +1639,7 @@ func (tx *transaction) writePendingAndCommit() error {
 	// Loop through all of the pending blocks to store and write them.
 	for _, blockData := range tx.pendingBlockData {
 		log.Tracef("Storing block %s", blockData.hash)
-		location, err := tx.db.store.writeBlock(blockData.bytes, blockData.height)
+		location, err := tx.db.store.writeBlock(blockData.bytes)
 		if err != nil {
 			rollback()
 			return err
@@ -1698,18 +1655,6 @@ func (tx *transaction) writePendingAndCommit() error {
 			rollback()
 			return err
 		}
-	}
-
-	// Loop through all pending deletes and delete them.
-	maxPruneHeight := uint32(0)
-	for _, blockHeight := range tx.pendingBlockDeletes {
-		if blockHeight > maxPruneHeight {
-			maxPruneHeight = blockHeight
-		}
-	}
-	if err := tx.db.store.deleteBlocks(maxPruneHeight); err != nil {
-		rollback()
-		return err
 	}
 
 	// Update the metadata for the current write file and offset.
@@ -1807,23 +1752,6 @@ func (db *db) Type() string {
 // which is used by the managed transaction code while the database method
 // returns the interface.
 func (db *db) begin(writable bool) (*transaction, error) {
-	// Make sure there is enough available disk space so we can inform the
-	// user of the problem instead of causing a db failure.
-	if writable {
-		freeSpace, err := getAvailableDiskSpace(db.store.basePath)
-		if err != nil {
-			return nil, makeDbErr(database.ErrDriverSpecific,
-				"failed to inspect available disk space", err)
-		}
-
-		if freeSpace < minAvailableSpaceUpdate {
-			errMsg := fmt.Sprintf("available disk space too low: "+
-				"%.1f MiB", float64(freeSpace)/float64(bytesMiB))
-			return nil, makeDbErr(database.ErrAvailableDiskSpace,
-				errMsg, nil)
-		}
-	}
-
 	// Whenever a new writable transaction is started, grab the write lock
 	// to ensure only a single write transaction can be active at the same
 	// time.  This lock will not be released until the transaction is
@@ -2032,7 +1960,7 @@ func initDB(ldb *leveldb.DB) error {
 	batch.Put(bucketizedKey(metadataBucketID, writeLocKeyName),
 		serializeWriteRow(0, 0))
 
-	// Create block and file index buckets and set the current bucket id.
+	// Create block index bucket and set the current bucket id.
 	//
 	// NOTE: Since buckets are virtualized through the use of prefixes,
 	// there is no need to store the bucket index data for the metadata
@@ -2054,7 +1982,7 @@ func initDB(ldb *leveldb.DB) error {
 
 // openDB opens the database at the provided path.  database.ErrDbDoesNotExist
 // is returned if the database doesn't exist and the create flag is not set.
-func openDB(dbPath string, network wire.BitcoinNet, create bool, cacheSize uint64, flushSecs uint32) (database.DB, error) {
+func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, error) {
 	// Error if the database doesn't exist and the create flag is not set.
 	metadataDbPath := filepath.Join(dbPath, metadataDbName)
 	dbExists := fileExists(metadataDbPath)
@@ -2088,17 +2016,8 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool, cacheSize uint6
 	// according to the data that is actually on disk.  Also create the
 	// database cache which wraps the underlying leveldb database to provide
 	// write caching.
-	store, err := newBlockStore(dbPath, network)
-	if err != nil {
-		return nil, err
-	}
-	if cacheSize == 0 {
-		cacheSize = defaultCacheSize
-	}
-	if flushSecs == 0 {
-		flushSecs = defaultFlushSecs
-	}
-	cache := newDbCache(ldb, store, cacheSize, flushSecs)
+	store := newBlockStore(dbPath, network)
+	cache := newDbCache(ldb, store, defaultCacheSize, defaultFlushSecs)
 	pdb := &db{store: store, cache: cache}
 
 	// Perform any reconciliation needed between the block and metadata as

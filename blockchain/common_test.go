@@ -31,10 +31,7 @@ const (
 	testDbRoot = "testdbs"
 
 	// blockDataNet is the expected network in the test block data.
-	// The serialized test data uses the Bitcoin Core network magic.
-	// Eventually we should create new testdata using the Bitcoin Cash
-	// magic.
-	blockDataNet wire.BitcoinNet = 0xd9b4bef9
+	blockDataNet = wire.MainNet
 )
 
 // filesExists returns whether or not the named file or directory exists.
@@ -62,11 +59,11 @@ func isSupportedDbType(dbType string) bool {
 
 // loadBlocks reads files containing bitcoin block data (gzipped but otherwise
 // in the format bitcoind writes) from disk and returns them as an array of
-// bchutil.Block.  This is largely borrowed from the test code in bchdb.
-func loadBlocks(filename string) (blocks []*bchutil.Block, err error) {
+// dogutil.Block.  This is largely borrowed from the test code in btcdb.
+func loadBlocks(filename string) (blocks []*dogutil.Block, err error) {
 	filename = filepath.Join("testdata/", filename)
 
-	var network = blockDataNet
+	var network = wire.MainNet
 	var dr io.Reader
 	var fi io.ReadCloser
 
@@ -82,13 +79,15 @@ func loadBlocks(filename string) (blocks []*bchutil.Block, err error) {
 	}
 	defer fi.Close()
 
-	var block *bchutil.Block
+	var block *dogutil.Block
 
 	err = nil
 	for height := int64(1); err == nil; height++ {
 		var rintbuf uint32
 		err = binary.Read(dr, binary.LittleEndian, &rintbuf)
 		if err == io.EOF {
+			// hit end of file at expected offset: no warning
+			height--
 			err = nil
 			break
 		}
@@ -106,7 +105,7 @@ func loadBlocks(filename string) (blocks []*bchutil.Block, err error) {
 		// read block
 		dr.Read(rbytes)
 
-		block, err = bchutil.NewBlockFromBytes(rbytes)
+		block, err = dogutil.NewBlockFromBytes(rbytes)
 		if err != nil {
 			return
 		}
@@ -174,13 +173,11 @@ func chainSetup(dbName string, params *chaincfg.Params) (*BlockChain, func(), er
 
 	// Create the main chain instance.
 	chain, err := New(&Config{
-		DB:                 db,
-		ChainParams:        &paramsCopy,
-		Checkpoints:        nil,
-		TimeSource:         NewMedianTime(),
-		SigCache:           txscript.NewSigCache(1000),
-		UtxoCacheMaxSize:   250 * 1024 * 1024,
-		ExcessiveBlockSize: 1000000,
+		DB:          db,
+		ChainParams: &paramsCopy,
+		Checkpoints: nil,
+		TimeSource:  NewMedianTime(),
+		SigCache:    txscript.NewSigCache(1000),
 	})
 	if err != nil {
 		teardown()
@@ -248,7 +245,7 @@ func loadUtxoView(filename string) (*UtxoViewpoint, error) {
 		}
 
 		// Deserialize it and add it to the view.
-		entry, err := DeserializeUtxoEntry(serialized)
+		entry, err := deserializeUtxoEntry(serialized)
 		if err != nil {
 			return nil, err
 		}

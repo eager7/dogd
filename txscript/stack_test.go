@@ -144,7 +144,7 @@ func TestStack(t *testing.T) {
 			"pop bool",
 			[][]byte{nil},
 			func(s *stack) error {
-				val, err := s.PopBool(false)
+				val, err := s.PopBool()
 				if err != nil {
 					return err
 				}
@@ -161,7 +161,7 @@ func TestStack(t *testing.T) {
 			"pop bool",
 			[][]byte{{1}},
 			func(s *stack) error {
-				val, err := s.PopBool(false)
+				val, err := s.PopBool()
 				if err != nil {
 					return err
 				}
@@ -178,7 +178,7 @@ func TestStack(t *testing.T) {
 			"pop bool",
 			nil,
 			func(s *stack) error {
-				_, err := s.PopBool(false)
+				_, err := s.PopBool()
 				return err
 			},
 			scriptError(ErrInvalidStackOperation, ""),
@@ -451,7 +451,7 @@ func TestStack(t *testing.T) {
 			nil,
 			func(s *stack) error {
 				s.PushBool(true)
-				val, err := s.PopBool(false)
+				val, err := s.PopBool()
 				if err != nil {
 					return err
 				}
@@ -469,7 +469,7 @@ func TestStack(t *testing.T) {
 			nil,
 			func(s *stack) error {
 				s.PushBool(false)
-				val, err := s.PopBool(false)
+				val, err := s.PopBool()
 				if err != nil {
 					return err
 				}
@@ -487,7 +487,7 @@ func TestStack(t *testing.T) {
 			nil,
 			func(s *stack) error {
 				s.PushInt(scriptNum(1))
-				val, err := s.PopBool(false)
+				val, err := s.PopBool()
 				if err != nil {
 					return err
 				}
@@ -505,7 +505,7 @@ func TestStack(t *testing.T) {
 			nil,
 			func(s *stack) error {
 				s.PushInt(scriptNum(0))
-				val, err := s.PopBool(false)
+				val, err := s.PopBool()
 				if err != nil {
 					return err
 				}

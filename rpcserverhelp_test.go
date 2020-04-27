@@ -4,9 +4,7 @@
 
 package main
 
-import (
-	"testing"
-)
+import "testing"
 
 // TestHelp ensures the help is reasonably accurate by checking that every
 // command specified also has result types defined and the one-line usage and

@@ -13,7 +13,7 @@ import (
 // XXX pedro: we will probably need to bump this.
 const (
 	// ProtocolVersion is the latest protocol version this package supports.
-	ProtocolVersion uint32 = 70015
+	ProtocolVersion uint32 = 70013
 
 	// MultipleAddressVersion is the protocol version which added multiple
 	// addresses per message (pver >= MultipleAddressVersion).
@@ -51,16 +51,6 @@ const (
 	// FeeFilterVersion is the protocol version which added a new
 	// feefilter message.
 	FeeFilterVersion uint32 = 70013
-
-	// BIP0152Version is the protocol version which added the compact
-	// block relaying.
-	BIP0152Version uint32 = 70014
-
-	// NoValidationRelayVersion is the other version number defined
-	// by BIP0152. Nodes using this protocol version or higher also
-	// accept compact block relay but pledge not to ban nodes which
-	// relay blocks without validating them first.
-	NoValidationRelayVersion uint32 = 70015
 )
 
 // ServiceFlag identifies services supported by a bitcoin peer.
@@ -85,46 +75,29 @@ const (
 	// SFNodeXthin is a flag used to indicate a peer supports xthin blocks.
 	SFNodeXthin
 
-	// SFNodeBitcoinCash indicates a node is running on the Bitcoin Cash
-	// network. Bitcoin Core peers should disconnect upon seeing this service bit.
-	// Technically this is no longer needed as Bitcoin Cash has a different
-	// network magic than Bitcoin Core so connections should not be possible.
-	SFNodeBitcoinCash
-
-	// SFNodeGraphene is a flag used to indicate a peer supports graphene block relay.
-	SFNodeGraphene
-
-	// SFNodeWeakBlocks is a flag used to indicate a peer supports the weak block protocol.
-	SFNodeWeakBlocks
+	// SFNodeBit5 is a flag used to indicate a peer supports a service
+	// defined by bit 5.
+	SFNodeBit5
 
 	// SFNodeCF is a flag used to indicate a peer supports committed
 	// filters (CFs).
 	SFNodeCF
 
-	// SFNodeXThinner is a placeholder for the xthinner block compression protocol being
-	// developed by Johnathan Toomim.
-	SFNodeXThinner
-
-	// SFNodeNetworkLimited is used to indicate the node is a pruned node and may only
-	// be capable of limited services. In particular it is only guaranteed to be able
-	// to serve the last 288 blocks though it will respond to requests for earlier blocks
-	// if it has them.
-	SFNodeNetworkLimited
+	// SFNode2X is a flag used to indicate a peer is running the Segwit2X
+	// software.
+	SFNode2X
 )
 
 // Map of service flags back to their constant names for pretty printing.
 var sfStrings = map[ServiceFlag]string{
-	SFNodeNetwork:        "SFNodeNetwork",
-	SFNodeGetUTXO:        "SFNodeGetUTXO",
-	SFNodeBloom:          "SFNodeBloom",
-	SFNodeWitness:        "SFNodeWitness",
-	SFNodeXthin:          "SFNodeXthin",
-	SFNodeBitcoinCash:    "SFNodeBitcoinCash",
-	SFNodeGraphene:       "SFNodeGraphene",
-	SFNodeWeakBlocks:     "SFNodeWeakBlocks",
-	SFNodeCF:             "SFNodeCF",
-	SFNodeXThinner:       "SFNodeXThinner",
-	SFNodeNetworkLimited: "SFNodeNetworkLimited",
+	SFNodeNetwork: "SFNodeNetwork",
+	SFNodeGetUTXO: "SFNodeGetUTXO",
+	SFNodeBloom:   "SFNodeBloom",
+	SFNodeWitness: "SFNodeWitness",
+	SFNodeXthin:   "SFNodeXthin",
+	SFNodeBit5:    "SFNodeBit5",
+	SFNodeCF:      "SFNodeCF",
+	SFNode2X:      "SFNode2X",
 }
 
 // orderedSFStrings is an ordered list of service flags from highest to
@@ -135,12 +108,9 @@ var orderedSFStrings = []ServiceFlag{
 	SFNodeBloom,
 	SFNodeWitness,
 	SFNodeXthin,
-	SFNodeBitcoinCash,
-	SFNodeGraphene,
-	SFNodeWeakBlocks,
+	SFNodeBit5,
 	SFNodeCF,
-	SFNodeXThinner,
-	SFNodeNetworkLimited,
+	SFNode2X,
 }
 
 // String returns the ServiceFlag in human-readable form.
@@ -177,13 +147,13 @@ type BitcoinNet uint32
 // better idea to simply disconnect clients that are misbehaving over TCP.
 const (
 	// MainNet represents the main bitcoin network.
-	MainNet BitcoinNet = 0xe8f3e1e3
+	MainNet BitcoinNet = 0xd9b4bef9
 
 	// TestNet represents the regression test network.
-	TestNet BitcoinNet = 0xfabfb5da
+	TestNet BitcoinNet = 0xdab5bffa
 
 	// TestNet3 represents the test network (version 3).
-	TestNet3 BitcoinNet = 0xf4f3e5f4
+	TestNet3 BitcoinNet = 0x0709110b
 
 	// SimNet represents the simulation test network.
 	SimNet BitcoinNet = 0x12141c16

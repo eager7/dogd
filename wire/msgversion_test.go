@@ -63,13 +63,13 @@ func TestVersion(t *testing.T) {
 	}
 
 	msg.AddUserAgent("myclient", "1.2.3", "optional", "comments")
-	customUserAgent := "myclient:1.2.3(optional; comments)/"
+	customUserAgent := DefaultUserAgent + "myclient:1.2.3(optional; comments)/"
 	if msg.UserAgent != customUserAgent {
 		t.Errorf("AddUserAgent: wrong user agent - got %s, want %s",
 			msg.UserAgent, customUserAgent)
 	}
 
-	msg.AddUserAgent(msg.UserAgent+"mygui", "3.4.5")
+	msg.AddUserAgent("mygui", "3.4.5")
 	customUserAgent += "mygui:3.4.5/"
 	if msg.UserAgent != customUserAgent {
 		t.Errorf("AddUserAgent: wrong user agent - got %s, want %s",
@@ -78,7 +78,7 @@ func TestVersion(t *testing.T) {
 
 	// accounting for ":", "/"
 	err = msg.AddUserAgent(strings.Repeat("t",
-		MaxUserAgentLen+1), "")
+		MaxUserAgentLen-len(customUserAgent)-2+1), "")
 	if _, ok := err.(*MessageError); !ok {
 		t.Errorf("AddUserAgent: expected error not received "+
 			"- got %v, want %T", err, MessageError{})
@@ -215,13 +215,13 @@ func TestVersionWire(t *testing.T) {
 	for i, test := range tests {
 		// Encode the message to wire format.
 		var buf bytes.Buffer
-		err := test.in.BchEncode(&buf, test.pver, test.enc)
+		err := test.in.BtcEncode(&buf, test.pver, test.enc)
 		if err != nil {
-			t.Errorf("BchEncode #%d error %v", i, err)
+			t.Errorf("BtcEncode #%d error %v", i, err)
 			continue
 		}
 		if !bytes.Equal(buf.Bytes(), test.buf) {
-			t.Errorf("BchEncode #%d\n got: %s want: %s", i,
+			t.Errorf("BtcEncode #%d\n got: %s want: %s", i,
 				spew.Sdump(buf.Bytes()), spew.Sdump(test.buf))
 			continue
 		}
@@ -229,13 +229,13 @@ func TestVersionWire(t *testing.T) {
 		// Decode the message from wire format.
 		var msg MsgVersion
 		rbuf := bytes.NewBuffer(test.buf)
-		err = msg.BchDecode(rbuf, test.pver, test.enc)
+		err = msg.BtcDecode(rbuf, test.pver, test.enc)
 		if err != nil {
-			t.Errorf("BchDecode #%d error %v", i, err)
+			t.Errorf("BtcDecode #%d error %v", i, err)
 			continue
 		}
 		if !reflect.DeepEqual(&msg, test.out) {
-			t.Errorf("BchDecode #%d\n got: %s want: %s", i,
+			t.Errorf("BtcDecode #%d\n got: %s want: %s", i,
 				spew.Sdump(msg), spew.Sdump(test.out))
 			continue
 		}
@@ -252,12 +252,12 @@ func TestVersionWireErrors(t *testing.T) {
 	enc := BaseEncoding
 	wireErr := &MessageError{}
 
-	// Ensure calling MsgVersion.BchDecode with a non *bytes.Buffer returns
+	// Ensure calling MsgVersion.BtcDecode with a non *bytes.Buffer returns
 	// error.
 	fr := newFixedReader(0, []byte{})
-	if err := baseVersion.BchDecode(fr, pver, enc); err == nil {
+	if err := baseVersion.BtcDecode(fr, pver, enc); err == nil {
 		t.Errorf("Did not received error when calling " +
-			"MsgVersion.BchDecode with non *bytes.Buffer")
+			"MsgVersion.BtcDecode with non *bytes.Buffer")
 	}
 
 	// Copy the base version and change the user agent to exceed max limits.
@@ -325,9 +325,9 @@ func TestVersionWireErrors(t *testing.T) {
 	for i, test := range tests {
 		// Encode to wire format.
 		w := newFixedWriter(test.max)
-		err := test.in.BchEncode(w, test.pver, test.enc)
+		err := test.in.BtcEncode(w, test.pver, test.enc)
 		if reflect.TypeOf(err) != reflect.TypeOf(test.writeErr) {
-			t.Errorf("BchEncode #%d wrong error got: %v, want: %v",
+			t.Errorf("BtcEncode #%d wrong error got: %v, want: %v",
 				i, err, test.writeErr)
 			continue
 		}
@@ -336,7 +336,7 @@ func TestVersionWireErrors(t *testing.T) {
 		// equality.
 		if _, ok := err.(*MessageError); !ok {
 			if err != test.writeErr {
-				t.Errorf("BchEncode #%d wrong error got: %v, "+
+				t.Errorf("BtcEncode #%d wrong error got: %v, "+
 					"want: %v", i, err, test.writeErr)
 				continue
 			}
@@ -345,9 +345,9 @@ func TestVersionWireErrors(t *testing.T) {
 		// Decode from wire format.
 		var msg MsgVersion
 		buf := bytes.NewBuffer(test.buf[0:test.max])
-		err = msg.BchDecode(buf, test.pver, test.enc)
+		err = msg.BtcDecode(buf, test.pver, test.enc)
 		if reflect.TypeOf(err) != reflect.TypeOf(test.readErr) {
-			t.Errorf("BchDecode #%d wrong error got: %v, want: %v",
+			t.Errorf("BtcDecode #%d wrong error got: %v, want: %v",
 				i, err, test.readErr)
 			continue
 		}
@@ -356,7 +356,7 @@ func TestVersionWireErrors(t *testing.T) {
 		// equality.
 		if _, ok := err.(*MessageError); !ok {
 			if err != test.readErr {
-				t.Errorf("BchDecode #%d wrong error got: %v, "+
+				t.Errorf("BtcDecode #%d wrong error got: %v, "+
 					"want: %v", i, err, test.readErr)
 				continue
 			}
@@ -458,13 +458,13 @@ func TestVersionOptionalFields(t *testing.T) {
 		// Decode the message from wire format.
 		var msg MsgVersion
 		rbuf := bytes.NewBuffer(test.buf)
-		err := msg.BchDecode(rbuf, test.pver, test.enc)
+		err := msg.BtcDecode(rbuf, test.pver, test.enc)
 		if err != nil {
-			t.Errorf("BchDecode #%d error %v", i, err)
+			t.Errorf("BtcDecode #%d error %v", i, err)
 			continue
 		}
 		if !reflect.DeepEqual(&msg, test.msg) {
-			t.Errorf("BchDecode #%d\n got: %s want: %s", i,
+			t.Errorf("BtcDecode #%d\n got: %s want: %s", i,
 				spew.Sdump(msg), spew.Sdump(test.msg))
 			continue
 		}

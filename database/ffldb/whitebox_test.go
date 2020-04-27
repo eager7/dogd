@@ -17,27 +17,17 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/btcsuite/goleveldb/leveldb"
-	ldberrors "github.com/btcsuite/goleveldb/leveldb/errors"
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/wire"
 	"github.com/eager7/dogutil"
+	"github.com/btcsuite/goleveldb/leveldb"
+	ldberrors "github.com/btcsuite/goleveldb/leveldb/errors"
 )
-
-// fixedExcessiveBlockSize should not be the default -we want to ensure it will work in all cases
-const fixedExcessiveBlockSize uint32 = 42111000
-
-func init() {
-	wire.SetLimits(fixedExcessiveBlockSize)
-}
 
 var (
 	// blockDataNet is the expected network in the test block data.
-	// The serialized test data uses the Bitcoin Core network magic.
-	// Eventually we should create new testdata using the Bitcoin Cash
-	// magic.
-	blockDataNet wire.BitcoinNet = 0xd9b4bef9
+	blockDataNet = wire.MainNet
 
 	// blockDataFile is the path to a file containing the first 256 blocks
 	// of the block chain.
@@ -49,7 +39,7 @@ var (
 
 // loadBlocks loads the blocks contained in the testdata directory and returns
 // a slice of them.
-func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*bchutil.Block, error) {
+func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*dogutil.Block, error) {
 	// Open the file that contains the blocks for reading.
 	fi, err := os.Open(dataFile)
 	if err != nil {
@@ -65,8 +55,8 @@ func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*bchu
 	dr := bzip2.NewReader(fi)
 
 	// Set the first block as the genesis block.
-	blocks := make([]*bchutil.Block, 0, 256)
-	genesis := bchutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
+	blocks := make([]*dogutil.Block, 0, 256)
+	genesis := dogutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
 	blocks = append(blocks, genesis)
 
 	// Load the remaining blocks.
@@ -105,7 +95,7 @@ func loadBlocks(t *testing.T, dataFile string, network wire.BitcoinNet) ([]*bchu
 		}
 
 		// Deserialize and store the block.
-		block, err := bchutil.NewBlockFromBytes(blockBytes)
+		block, err := dogutil.NewBlockFromBytes(blockBytes)
 		if err != nil {
 			t.Errorf("Failed to parse block %v: %v", height, err)
 			return nil, err
@@ -142,7 +132,7 @@ type testContext struct {
 	db           database.DB
 	files        map[uint32]*lockableFile
 	maxFileSizes map[uint32]int64
-	blocks       []*bchutil.Block
+	blocks       []*dogutil.Block
 }
 
 // TestConvertErr ensures the leveldb error to database error conversion works
@@ -189,7 +179,7 @@ func TestCornerCases(t *testing.T) {
 	// directory is needed.
 	testName := "openDB: fail due to file at target location"
 	wantErrCode := database.ErrDriverSpecific
-	idb, err := openDB(dbPath, blockDataNet, true, 0, 0)
+	idb, err := openDB(dbPath, blockDataNet, true)
 	if !checkDbError(t, testName, err, wantErrCode) {
 		if err == nil {
 			idb.Close()
@@ -201,7 +191,7 @@ func TestCornerCases(t *testing.T) {
 	// Remove the file and create the database to run tests against.  It
 	// should be successful this time.
 	_ = os.RemoveAll(dbPath)
-	idb, err = openDB(dbPath, blockDataNet, true, 0, 0)
+	idb, err = openDB(dbPath, blockDataNet, true)
 	if err != nil {
 		t.Errorf("openDB: unexpected error: %v", err)
 		return
@@ -218,7 +208,7 @@ func TestCornerCases(t *testing.T) {
 		return
 	}
 	store := idb.(*db).store
-	_, err = store.writeBlock([]byte{0x00}, 0)
+	_, err = store.writeBlock([]byte{0x00})
 	if !checkDbError(t, testName, err, database.ErrDriverSpecific) {
 		return
 	}
@@ -653,9 +643,9 @@ func TestFailureScenarios(t *testing.T) {
 		// context.
 		maxSize := int64(-1)
 		if maxFileSize, ok := tc.maxFileSizes[fileNum]; ok {
-			maxSize = maxFileSize
+			maxSize = int64(maxFileSize)
 		}
-		file := &mockFile{maxSize: maxSize}
+		file := &mockFile{maxSize: int64(maxSize)}
 		tc.files[fileNum] = &lockableFile{file: file}
 		return file, nil
 	}

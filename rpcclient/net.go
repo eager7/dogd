@@ -90,7 +90,7 @@ func (c *Client) NodeAsync(command btcjson.NodeSubCmd, host string,
 // connect or diconnect a non-persistent one.
 //
 // The connectSubCmd should be set either "perm" or "temp", depending on
-// whether we are targeting a persistent or non-persistent peer. Passing nil
+// whether we are targetting a persistent or non-persistent peer. Passing nil
 // will cause the default value to be used, which currently is "temp".
 func (c *Client) Node(command btcjson.NodeSubCmd, host string,
 	connectSubCmd *string) error {
@@ -242,6 +242,43 @@ func (c *Client) PingAsync() FuturePingResult {
 // access the ping times.
 func (c *Client) Ping() error {
 	return c.PingAsync().Receive()
+}
+
+// FutureGetNetworkInfoResult is a future promise to deliver the result of a
+// GetNetworkInfoAsync RPC invocation (or an applicable error).
+type FutureGetNetworkInfoResult chan *response
+
+// Receive waits for the response promised by the future and returns data about
+// the current network.
+func (r FutureGetNetworkInfoResult) Receive() (*btcjson.GetNetworkInfoResult, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal result as an array of getpeerinfo result objects.
+	var networkInfo btcjson.GetNetworkInfoResult
+	err = json.Unmarshal(res, &networkInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	return &networkInfo, nil
+}
+
+// GetNetworkInfoAsync returns an instance of a type that can be used to get the
+// result of the RPC at some future time by invoking the Receive function on the
+// returned instance.
+//
+// See GetNetworkInfo for the blocking version and more details.
+func (c *Client) GetNetworkInfoAsync() FutureGetNetworkInfoResult {
+	cmd := btcjson.NewGetNetworkInfoCmd()
+	return c.sendCmd(cmd)
+}
+
+// GetNetworkInfo returns data about the current network.
+func (c *Client) GetNetworkInfo() (*btcjson.GetNetworkInfoResult, error) {
+	return c.GetNetworkInfoAsync().Receive()
 }
 
 // FutureGetPeerInfoResult is a future promise to deliver the result of a

@@ -1,7 +1,7 @@
 integration
 ===========
 
-[![Build Status](https://travis-ci.org/eager7/dogd.png?branch=master)](https://travis-ci.org/eager7/dogd)
+[![Build Status](http://img.shields.io/travis/eager7/dogd.svg)](https://travis-ci.org/eager7/dogd)
 [![ISC License](http://img.shields.io/badge/license-ISC-blue.svg)](http://copyfree.org)
 
 This contains integration tests which make use of the

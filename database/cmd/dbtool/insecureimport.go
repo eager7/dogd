@@ -86,10 +86,10 @@ func (bi *blockImporter) readBlock() ([]byte, error) {
 	if err := binary.Read(bi.r, binary.LittleEndian, &blockLen); err != nil {
 		return nil, err
 	}
-	if blockLen > wire.MaxBlockPayload() {
+	if blockLen > wire.MaxBlockPayload {
 		return nil, fmt.Errorf("block payload of %d bytes is larger "+
 			"than the max allowed %d bytes", blockLen,
-			wire.MaxBlockPayload())
+			wire.MaxBlockPayload)
 	}
 
 	serializedBlock := make([]byte, blockLen)
@@ -108,7 +108,7 @@ func (bi *blockImporter) readBlock() ([]byte, error) {
 // NOTE: This is not a safe import as it does not verify chain rules.
 func (bi *blockImporter) processBlock(serializedBlock []byte) (bool, error) {
 	// Deserialize the block which includes checks for malformed blocks.
-	block, err := bchutil.NewBlockFromBytes(serializedBlock)
+	block, err := dogutil.NewBlockFromBytes(serializedBlock)
 	if err != nil {
 		return false, err
 	}

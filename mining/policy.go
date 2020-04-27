@@ -21,7 +21,15 @@ const (
 // the generation of block templates.  See the documentation for
 // NewBlockTemplate for more details on each of these parameters are used.
 type Policy struct {
-	// BlockMinSize is the minimum block size to be used when generating
+	// BlockMinWeight is the minimum block weight to be used when
+	// generating a block template.
+	BlockMinWeight uint32
+
+	// BlockMaxWeight is the maximum block weight to be used when
+	// generating a block template.
+	BlockMaxWeight uint32
+
+	// BlockMinWeight is the minimum block size to be used when generating
 	// a block template.
 	BlockMinSize uint32
 
@@ -36,7 +44,7 @@ type Policy struct {
 	// TxMinFreeFee is the minimum fee in Satoshi/1000 bytes that is
 	// required for a transaction to be treated as free for mining purposes
 	// (block template generation).
-	TxMinFreeFee bchutil.Amount
+	TxMinFreeFee dogutil.Amount
 }
 
 // minInt is a helper function to return the minimum of two ints.  This avoids

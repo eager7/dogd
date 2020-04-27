@@ -18,10 +18,10 @@ import (
 
 type config struct {
 	Directory    string   `short:"d" long:"directory" description:"Directory to write certificate pair"`
-	Years        int      `short:"y" long:"years" description:"How many years a certificate is valid for"`
-	Organization string   `short:"o" long:"org" description:"Organization in certificate"`
-	ExtraHosts   []string `short:"H" long:"host" description:"Additional hosts/IPs to create certificate for"`
 	Force        bool     `short:"f" long:"force" description:"Force overwriting of any old certs and keys"`
+	ExtraHosts   []string `short:"H" long:"host" description:"Additional hosts/IPs to create certificate for"`
+	Organization string   `short:"o" long:"org" description:"Organization in certificate"`
+	Years        int      `short:"y" long:"years" description:"How many years a certificate is valid for"`
 }
 
 func main() {
@@ -58,7 +58,7 @@ func main() {
 	}
 
 	validUntil := time.Now().Add(time.Duration(cfg.Years) * 365 * 24 * time.Hour)
-	cert, key, err := bchutil.NewTLSCertPair(cfg.Organization, validUntil, cfg.ExtraHosts)
+	cert, key, err := dogutil.NewTLSCertPair(cfg.Organization, validUntil, cfg.ExtraHosts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot generate certificate pair: %v\n", err)
 		os.Exit(1)
@@ -81,7 +81,7 @@ func main() {
 func cleanAndExpandPath(path string) string {
 	// Expand initial ~ to OS specific home directory.
 	if strings.HasPrefix(path, "~") {
-		appHomeDir := bchutil.AppDataDir("gencerts", false)
+		appHomeDir := dogutil.AppDataDir("gencerts", false)
 		homeDir := filepath.Dir(appHomeDir)
 		path = strings.Replace(path, "~", homeDir, 1)
 	}

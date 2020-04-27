@@ -46,10 +46,9 @@ func ExampleBlockChain_ProcessBlock() {
 	// values obtained from other peers on the network so the local time is
 	// adjusted to be in agreement with other peers.
 	chain, err := blockchain.New(&blockchain.Config{
-		DB:                 db,
-		ChainParams:        &chaincfg.MainNetParams,
-		TimeSource:         blockchain.NewMedianTime(),
-		ExcessiveBlockSize: 1000000,
+		DB:          db,
+		ChainParams: &chaincfg.MainNetParams,
+		TimeSource:  blockchain.NewMedianTime(),
 	})
 	if err != nil {
 		fmt.Printf("Failed to create chain instance: %v\n", err)
@@ -59,7 +58,7 @@ func ExampleBlockChain_ProcessBlock() {
 	// Process a block.  For this example, we are going to intentionally
 	// cause an error by trying to process the genesis block which already
 	// exists.
-	genesisBlock := bchutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
+	genesisBlock := dogutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
 	isMainChain, isOrphan, err := chain.ProcessBlock(genesisBlock,
 		blockchain.BFNone)
 	if err != nil {

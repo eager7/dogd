@@ -64,10 +64,10 @@ var (
 // Harness to exercise functionality.
 type HarnessTestCase func(r *Harness, t *testing.T)
 
-// Harness fully encapsulates an active bchd process to provide a unified
-// platform for creating rpc driven integration tests involving bchd. The
-// active bchd node will typically be run in simnet mode in order to allow for
-// easy generation of test blockchains.  The active bchd process is fully
+// Harness fully encapsulates an active btcd process to provide a unified
+// platform for creating rpc driven integration tests involving btcd. The
+// active btcd node will typically be run in simnet mode in order to allow for
+// easy generation of test blockchains.  The active btcd process is fully
 // managed by Harness, which handles the necessary initialization, and teardown
 // of the process along with any temporary directories created as a result.
 // Multiple Harness instances may be run concurrently, in order to allow for
@@ -171,7 +171,7 @@ func New(activeNet *chaincfg.Params, handlers *rpcclient.NotificationHandlers,
 	// callback.
 	if handlers.OnFilteredBlockConnected != nil {
 		obc := handlers.OnFilteredBlockConnected
-		handlers.OnFilteredBlockConnected = func(height int32, header *wire.BlockHeader, filteredTxns []*bchutil.Tx) {
+		handlers.OnFilteredBlockConnected = func(height int32, header *wire.BlockHeader, filteredTxns []*dogutil.Tx) {
 			wallet.IngestBlock(height, header, filteredTxns)
 			obc(height, header, filteredTxns)
 		}
@@ -214,7 +214,7 @@ func New(activeNet *chaincfg.Params, handlers *rpcclient.NotificationHandlers,
 // NOTE: This method and TearDown should always be called from the same
 // goroutine as they are not concurrent safe.
 func (h *Harness) SetUp(createTestChain bool, numMatureOutputs uint32) error {
-	// Start the bchd node itself. This spawns a new process which will be
+	// Start the btcd node itself. This spawns a new process which will be
 	// managed
 	if err := h.node.start(); err != nil {
 		return err
@@ -227,12 +227,12 @@ func (h *Harness) SetUp(createTestChain bool, numMatureOutputs uint32) error {
 
 	// Filter transactions that pay to the coinbase associated with the
 	// wallet.
-	filterAddrs := []bchutil.Address{h.wallet.coinbaseAddr}
+	filterAddrs := []dogutil.Address{h.wallet.coinbaseAddr}
 	if err := h.Node.LoadTxFilter(true, filterAddrs, nil); err != nil {
 		return err
 	}
 
-	// Ensure bchd properly dispatches our registered call-back for each new
+	// Ensure btcd properly dispatches our registered call-back for each new
 	// block. Otherwise, the memWallet won't function properly.
 	if err := h.Node.NotifyBlocks(); err != nil {
 		return err
@@ -272,26 +272,21 @@ func (h *Harness) SetUp(createTestChain bool, numMatureOutputs uint32) error {
 //
 // This function MUST be called with the harness state mutex held (for writes).
 func (h *Harness) tearDown() error {
-	var returnErr error
-
-	// try to do all shutdown steps and return the last error, if any
 	if h.Node != nil {
 		h.Node.Shutdown()
 	}
 
 	if err := h.node.shutdown(); err != nil {
-		fmt.Println("error shutting down node:", err)
-		returnErr = err
+		return err
 	}
 
 	if err := os.RemoveAll(h.testNodeDir); err != nil {
-		fmt.Println("error removing test node artifacts:", err)
-		returnErr = err
+		return err
 	}
 
 	delete(testInstances, h.testNodeDir)
 
-	return returnErr
+	return nil
 }
 
 // TearDown stops the running rpc test instance. All created processes are
@@ -306,7 +301,7 @@ func (h *Harness) TearDown() error {
 	return h.tearDown()
 }
 
-// connectRPCClient attempts to establish an RPC connection to the created bchd
+// connectRPCClient attempts to establish an RPC connection to the created btcd
 // process belonging to this Harness instance. If the initial connection
 // attempt fails, this function will retry h.maxConnRetries times, backing off
 // the time between subsequent attempts. If after h.maxConnRetries attempts,
@@ -338,7 +333,7 @@ func (h *Harness) connectRPCClient() error {
 // wallet.
 //
 // This function is safe for concurrent access.
-func (h *Harness) NewAddress() (bchutil.Address, error) {
+func (h *Harness) NewAddress() (dogutil.Address, error) {
 	return h.wallet.NewAddress()
 }
 
@@ -346,7 +341,7 @@ func (h *Harness) NewAddress() (bchutil.Address, error) {
 // wallet.
 //
 // This function is safe for concurrent access.
-func (h *Harness) ConfirmedBalance() bchutil.Amount {
+func (h *Harness) ConfirmedBalance() dogutil.Amount {
 	return h.wallet.ConfirmedBalance()
 }
 
@@ -356,7 +351,7 @@ func (h *Harness) ConfirmedBalance() bchutil.Amount {
 //
 // This function is safe for concurrent access.
 func (h *Harness) SendOutputs(targetOutputs []*wire.TxOut,
-	feeRate bchutil.Amount) (*chainhash.Hash, error) {
+	feeRate dogutil.Amount) (*chainhash.Hash, error) {
 
 	return h.wallet.SendOutputs(targetOutputs, feeRate)
 }
@@ -367,7 +362,7 @@ func (h *Harness) SendOutputs(targetOutputs []*wire.TxOut,
 //
 // This function is safe for concurrent access.
 func (h *Harness) SendOutputsWithoutChange(targetOutputs []*wire.TxOut,
-	feeRate bchutil.Amount) (*chainhash.Hash, error) {
+	feeRate dogutil.Amount) (*chainhash.Hash, error) {
 
 	return h.wallet.SendOutputsWithoutChange(targetOutputs, feeRate)
 }
@@ -384,7 +379,7 @@ func (h *Harness) SendOutputsWithoutChange(targetOutputs []*wire.TxOut,
 //
 // This function is safe for concurrent access.
 func (h *Harness) CreateTransaction(targetOutputs []*wire.TxOut,
-	feeRate bchutil.Amount, change bool) (*wire.MsgTx, error) {
+	feeRate dogutil.Amount, change bool) (*wire.MsgTx, error) {
 
 	return h.wallet.CreateTransaction(targetOutputs, feeRate, change)
 }
@@ -421,8 +416,8 @@ func (h *Harness) P2PAddress() string {
 // blockTime parameter if one doesn't wish to set a custom time.
 //
 // This function is safe for concurrent access.
-func (h *Harness) GenerateAndSubmitBlock(txns []*bchutil.Tx, blockVersion int32,
-	blockTime time.Time) (*bchutil.Block, error) {
+func (h *Harness) GenerateAndSubmitBlock(txns []*dogutil.Tx, blockVersion int32,
+	blockTime time.Time) (*dogutil.Block, error) {
 	return h.GenerateAndSubmitBlockWithCustomCoinbaseOutputs(txns,
 		blockVersion, blockTime, []wire.TxOut{})
 }
@@ -442,8 +437,8 @@ func (h *Harness) GenerateAndSubmitBlock(txns []*bchutil.Tx, blockVersion int32,
 //
 // This function is safe for concurrent access.
 func (h *Harness) GenerateAndSubmitBlockWithCustomCoinbaseOutputs(
-	txns []*bchutil.Tx, blockVersion int32, blockTime time.Time,
-	mineTo []wire.TxOut) (*bchutil.Block, error) {
+	txns []*dogutil.Tx, blockVersion int32, blockTime time.Time,
+	mineTo []wire.TxOut) (*dogutil.Block, error) {
 
 	h.Lock()
 	defer h.Unlock()
@@ -460,7 +455,7 @@ func (h *Harness) GenerateAndSubmitBlockWithCustomCoinbaseOutputs(
 	if err != nil {
 		return nil, err
 	}
-	prevBlock := bchutil.NewBlock(mBlock)
+	prevBlock := dogutil.NewBlock(mBlock)
 	prevBlock.SetHeight(prevBlockHeight)
 
 	// Create a new block including the specified transactions
@@ -499,7 +494,7 @@ func generateListeningAddresses() (string, string) {
 
 // baseDir is the directory path of the temp directory for all rpctest files.
 func baseDir() (string, error) {
-	dirPath := filepath.Join(os.TempDir(), "bchd", "rpctest")
-	err := os.MkdirAll(dirPath, os.ModePerm)
+	dirPath := filepath.Join(os.TempDir(), "btcd", "rpctest")
+	err := os.MkdirAll(dirPath, 0755)
 	return dirPath, err
 }

@@ -121,9 +121,9 @@ var regressionNetParams = &chaincfg.Params{
 	RelayNonStdTxs: true,
 
 	// Address encoding magics
-	LegacyPubKeyHashAddrID: 0x6f, // starts with m or n
-	LegacyScriptHashAddrID: 0xc4, // starts with 2
-	PrivateKeyID:           0xef, // starts with 9 (uncompressed) or c (compressed)
+	PubKeyHashAddrID: 0x6f, // starts with m or n
+	ScriptHashAddrID: 0xc4, // starts with 2
+	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
 
 	// BIP32 hierarchical deterministic extended key magics
 	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x83, 0x94}, // starts with tprv
@@ -132,7 +132,4 @@ var regressionNetParams = &chaincfg.Params{
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 1,
-
-	// For the purpose of this test we don't need to check the Uahf
-	UahfForkHeight: -1,
 }

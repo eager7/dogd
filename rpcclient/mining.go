@@ -61,6 +61,53 @@ func (c *Client) Generate(numBlocks uint32) ([]*chainhash.Hash, error) {
 	return c.GenerateAsync(numBlocks).Receive()
 }
 
+// FutureGenerateToAddressResult is a future promise to deliver the result of a
+// GenerateToAddressResult RPC invocation (or an applicable error).
+type FutureGenerateToAddressResult chan *response
+
+// Receive waits for the response promised by the future and returns the hashes of
+// of the generated blocks.
+func (f FutureGenerateToAddressResult) Receive() ([]*chainhash.Hash, error) {
+	res, err := receiveFuture(f)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal result as a list of strings.
+	var result []string
+	err = json.Unmarshal(res, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert each block hash to a chainhash.Hash and store a pointer to
+	// each.
+	convertedResult := make([]*chainhash.Hash, len(result))
+	for i, hashString := range result {
+		convertedResult[i], err = chainhash.NewHashFromStr(hashString)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return convertedResult, nil
+}
+
+// GenerateToAddressAsync returns an instance of a type that can be used to get
+// the result of the RPC at some future time by invoking the Receive function on
+// the returned instance.
+//
+// See GenerateToAddress for the blocking version and more details.
+func (c *Client) GenerateToAddressAsync(numBlocks int64, address dogutil.Address, maxTries *int64) FutureGenerateToAddressResult {
+	cmd := btcjson.NewGenerateToAddressCmd(numBlocks, address.EncodeAddress(), maxTries)
+	return c.sendCmd(cmd)
+}
+
+// GenerateToAddress generates numBlocks blocks to the given address and returns their hashes.
+func (c *Client) GenerateToAddress(numBlocks int64, address dogutil.Address, maxTries *int64) ([]*chainhash.Hash, error) {
+	return c.GenerateToAddressAsync(numBlocks, address, maxTries).Receive()
+}
+
 // FutureGetGenerateResult is a future promise to deliver the result of a
 // GetGenerateAsync RPC invocation (or an applicable error).
 type FutureGetGenerateResult chan *response
@@ -208,14 +255,14 @@ type FutureGetNetworkHashPS chan *response
 // Receive waits for the response promised by the future and returns the
 // estimated network hashes per second for the block heights provided by the
 // parameters.
-func (r FutureGetNetworkHashPS) Receive() (float64, error) {
+func (r FutureGetNetworkHashPS) Receive() (int64, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return -1, err
 	}
 
-	// Unmarshal result as an float64.
-	var result float64
+	// Unmarshal result as an int64.
+	var result int64
 	err = json.Unmarshal(res, &result)
 	if err != nil {
 		return 0, err
@@ -239,7 +286,7 @@ func (c *Client) GetNetworkHashPSAsync() FutureGetNetworkHashPS {
 //
 // See GetNetworkHashPS2 to override the number of blocks to use and
 // GetNetworkHashPS3 to override the height at which to calculate the estimate.
-func (c *Client) GetNetworkHashPS() (float64, error) {
+func (c *Client) GetNetworkHashPS() (int64, error) {
 	return c.GetNetworkHashPSAsync().Receive()
 }
 
@@ -260,7 +307,7 @@ func (c *Client) GetNetworkHashPS2Async(blocks int) FutureGetNetworkHashPS {
 //
 // See GetNetworkHashPS to use defaults and GetNetworkHashPS3 to override the
 // height at which to calculate the estimate.
-func (c *Client) GetNetworkHashPS2(blocks int) (float64, error) {
+func (c *Client) GetNetworkHashPS2(blocks int) (int64, error) {
 	return c.GetNetworkHashPS2Async(blocks).Receive()
 }
 
@@ -280,7 +327,7 @@ func (c *Client) GetNetworkHashPS3Async(blocks, height int) FutureGetNetworkHash
 // of blocks since the last difficulty change will be used.
 //
 // See GetNetworkHashPS and GetNetworkHashPS2 to use defaults.
-func (c *Client) GetNetworkHashPS3(blocks, height int) (float64, error) {
+func (c *Client) GetNetworkHashPS3(blocks, height int) (int64, error) {
 	return c.GetNetworkHashPS3Async(blocks, height).Receive()
 }
 
@@ -394,7 +441,7 @@ func (r FutureSubmitBlockResult) Receive() error {
 // returned instance.
 //
 // See SubmitBlock for the blocking version and more details.
-func (c *Client) SubmitBlockAsync(block *bchutil.Block, options *btcjson.SubmitBlockOptions) FutureSubmitBlockResult {
+func (c *Client) SubmitBlockAsync(block *dogutil.Block, options *btcjson.SubmitBlockOptions) FutureSubmitBlockResult {
 	blockHex := ""
 	if block != nil {
 		blockBytes, err := block.Bytes()
@@ -410,7 +457,7 @@ func (c *Client) SubmitBlockAsync(block *bchutil.Block, options *btcjson.SubmitB
 }
 
 // SubmitBlock attempts to submit a new block into the bitcoin network.
-func (c *Client) SubmitBlock(block *bchutil.Block, options *btcjson.SubmitBlockOptions) error {
+func (c *Client) SubmitBlock(block *dogutil.Block, options *btcjson.SubmitBlockOptions) error {
 	return c.SubmitBlockAsync(block, options).Receive()
 }
 

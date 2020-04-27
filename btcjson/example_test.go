@@ -11,22 +11,23 @@ import (
 	"github.com/eager7/dogd/btcjson"
 )
 
-// Create a new getblock command. Notice the call to btcjson.Uint32 which is a
-// convenience function for creating a pointer out of a primitive for
-// optional parameters. Notice the nil parameter indicates
-// to use the default parameter for that fields.  This is a common
-// pattern used in all of the New<Foo>Cmdr functions in this package for
-// optional fields.
+// This example demonstrates how to create and marshal a command into a JSON-RPC
+// request.
 func ExampleMarshalCmd() {
-	// Create a new getblock command.
+	// Create a new getblock command.  Notice the nil parameter indicates
+	// to use the default parameter for that fields.  This is a common
+	// pattern used in all of the New<Foo>Cmd functions in this package for
+	// optional fields.  Also, notice the call to btcjson.Bool which is a
+	// convenience function for creating a pointer out of a primitive for
+	// optional parameters.
 	blockHash := "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
-	gbCmd := btcjson.NewGetBlockCmd(blockHash, btcjson.Bool(false), nil)
+	gbCmd := btcjson.NewGetBlockCmd(blockHash, btcjson.Int(0))
 
 	// Marshal the command to the format suitable for sending to the RPC
 	// server.  Typically the client would increment the id here which is
 	// request so the response can be identified.
 	id := 1
-	marshalledBytes, err := btcjson.MarshalCmd("1.0", id, gbCmd)
+	marshalledBytes, err := btcjson.MarshalCmd(id, gbCmd)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -37,7 +38,7 @@ func ExampleMarshalCmd() {
 	fmt.Printf("%s\n", marshalledBytes)
 
 	// Output:
-	// {"jsonrpc":"1.0","method":"getblock","params":["000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",false],"id":1}
+	// {"jsonrpc":"1.0","method":"getblock","params":["000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",0],"id":1}
 }
 
 // This example demonstrates how to unmarshal a JSON-RPC request and then
@@ -45,7 +46,7 @@ func ExampleMarshalCmd() {
 func ExampleUnmarshalCmd() {
 	// Ordinarily this would be read from the wire, but for this example,
 	// it is hard coded here for clarity.
-	data := []byte(`{"jsonrpc":"1.0","method":"getblock","params":["000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",false],"id":1}`)
+	data := []byte(`{"jsonrpc":"1.0","method":"getblock","params":["000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",0],"id":1}`)
 
 	// Unmarshal the raw bytes from the wire into a JSON-RPC request.
 	var request btcjson.Request
@@ -83,20 +84,18 @@ func ExampleUnmarshalCmd() {
 
 	// Display the fields in the concrete command.
 	fmt.Println("Hash:", gbCmd.Hash)
-	fmt.Println("Verbose:", *gbCmd.Verbose)
-	fmt.Println("VerboseTx:", *gbCmd.VerboseTx)
+	fmt.Println("Verbosity:", *gbCmd.Verbosity)
 
 	// Output:
 	// Hash: 000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
-	// Verbose: false
-	// VerboseTx: false
+	// Verbosity: 0
 }
 
 // This example demonstrates how to marshal a JSON-RPC response.
 func ExampleMarshalResponse() {
 	// Marshal a new JSON-RPC response.  For example, this is a response
 	// to a getblockheight request.
-	marshalledBytes, err := btcjson.MarshalResponse("1.0", 1, 350001, nil)
+	marshalledBytes, err := btcjson.MarshalResponse(1, 350001, nil)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -108,7 +107,7 @@ func ExampleMarshalResponse() {
 	fmt.Printf("%s\n", marshalledBytes)
 
 	// Output:
-	// {"jsonrpc":"1.0","result":350001,"error":null,"id":1}
+	// {"result":350001,"error":null,"id":1}
 }
 
 // This example demonstrates how to unmarshal a JSON-RPC response and then

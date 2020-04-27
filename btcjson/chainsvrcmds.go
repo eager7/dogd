@@ -130,8 +130,7 @@ func NewGetBestBlockHashCmd() *GetBestBlockHashCmd {
 // GetBlockCmd defines the getblock JSON-RPC command.
 type GetBlockCmd struct {
 	Hash      string
-	Verbose   *bool `jsonrpcdefault:"true"`
-	VerboseTx *bool `jsonrpcdefault:"false"`
+	Verbosity *int `jsonrpcdefault:"0"`
 }
 
 // NewGetBlockCmd returns a new instance which can be used to issue a getblock
@@ -139,11 +138,10 @@ type GetBlockCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewGetBlockCmd(hash string, verbose, verboseTx *bool) *GetBlockCmd {
+func NewGetBlockCmd(hash string, verbosity *int) *GetBlockCmd {
 	return &GetBlockCmd{
 		Hash:      hash,
-		Verbose:   verbose,
-		VerboseTx: verboseTx,
+		Verbosity: verbosity,
 	}
 }
 
@@ -190,6 +188,50 @@ func NewGetBlockHeaderCmd(hash string, verbose *bool) *GetBlockHeaderCmd {
 	return &GetBlockHeaderCmd{
 		Hash:    hash,
 		Verbose: verbose,
+	}
+}
+
+// HashOrHeight defines a type that can be used as hash_or_height value in JSON-RPC commands.
+type HashOrHeight struct {
+	Value interface{}
+}
+
+// MarshalJSON implements the json.Marshaler interface
+func (h HashOrHeight) MarshalJSON() ([]byte, error) {
+	return json.Marshal(h.Value)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface
+func (h *HashOrHeight) UnmarshalJSON(data []byte) error {
+	var unmarshalled interface{}
+	if err := json.Unmarshal(data, &unmarshalled); err != nil {
+		return err
+	}
+
+	switch v := unmarshalled.(type) {
+	case float64:
+		h.Value = int(v)
+	case string:
+		h.Value = v
+	default:
+		return fmt.Errorf("invalid hash_or_height value: %v", unmarshalled)
+	}
+
+	return nil
+}
+
+// GetBlockStatsCmd defines the getblockstats JSON-RPC command.
+type GetBlockStatsCmd struct {
+	HashOrHeight HashOrHeight
+	Stats        *[]string
+}
+
+// NewGetBlockStatsCmd returns a new instance which can be used to issue a
+// getblockstats JSON-RPC command. Either height or hash must be specified.
+func NewGetBlockStatsCmd(hashOrHeight HashOrHeight, stats *[]string) *GetBlockStatsCmd {
+	return &GetBlockStatsCmd{
+		HashOrHeight: hashOrHeight,
+		Stats:        stats,
 	}
 }
 
@@ -638,6 +680,7 @@ func NewSearchRawTransactionsCmd(address string, verbose, skip, count *int, vinE
 type SendRawTransactionCmd struct {
 	HexTx         string
 	AllowHighFees *bool `jsonrpcdefault:"false"`
+	MaxFeeRate    *int32
 }
 
 // NewSendRawTransactionCmd returns a new instance which can be used to issue a
@@ -649,6 +692,17 @@ func NewSendRawTransactionCmd(hexTx string, allowHighFees *bool) *SendRawTransac
 	return &SendRawTransactionCmd{
 		HexTx:         hexTx,
 		AllowHighFees: allowHighFees,
+	}
+}
+
+// NewSendRawTransactionCmd returns a new instance which can be used to issue a
+// sendrawtransaction JSON-RPC command to a bitcoind node.
+//
+// A 0 maxFeeRate indicates that a maximum fee rate won't be enforced.
+func NewBitcoindSendRawTransactionCmd(hexTx string, maxFeeRate int32) *SendRawTransactionCmd {
+	return &SendRawTransactionCmd{
+		HexTx:      hexTx,
+		MaxFeeRate: &maxFeeRate,
 	}
 }
 
@@ -788,6 +842,7 @@ func init() {
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getblockhash", (*GetBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getblockheader", (*GetBlockHeaderCmd)(nil), flags)
+	MustRegisterCmd("getblockstats", (*GetBlockStatsCmd)(nil), flags)
 	MustRegisterCmd("getblocktemplate", (*GetBlockTemplateCmd)(nil), flags)
 	MustRegisterCmd("getcfilter", (*GetCFilterCmd)(nil), flags)
 	MustRegisterCmd("getcfilterheader", (*GetCFilterHeaderCmd)(nil), flags)

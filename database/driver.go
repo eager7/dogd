@@ -28,7 +28,7 @@ type Driver struct {
 	Open func(args ...interface{}) (DB, error)
 
 	// UseLogger uses a specified Logger to output package logging info.
-	UseLogger func(logger bchlog.Logger)
+	UseLogger func(logger btclog.Logger)
 }
 
 // driverList holds all of the registered database backends.

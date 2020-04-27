@@ -34,9 +34,9 @@ func (msg *MsgHeaders) AddBlockHeader(bh *BlockHeader) error {
 	return nil
 }
 
-// BchDecode decodes r using the bitcoin protocol encoding into the receiver.
+// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgHeaders) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgHeaders) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	count, err := ReadVarInt(r, pver)
 	if err != nil {
 		return err
@@ -46,7 +46,7 @@ func (msg *MsgHeaders) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 	if count > MaxBlockHeadersPerMsg {
 		str := fmt.Sprintf("too many block headers for message "+
 			"[count %v, max %v]", count, MaxBlockHeadersPerMsg)
-		return messageError("MsgHeaders.BchDecode", str)
+		return messageError("MsgHeaders.BtcDecode", str)
 	}
 
 	// Create a contiguous slice of headers to deserialize into in order to
@@ -69,7 +69,7 @@ func (msg *MsgHeaders) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 		if txCount > 0 {
 			str := fmt.Sprintf("block headers may not contain "+
 				"transactions [count %v]", txCount)
-			return messageError("MsgHeaders.BchDecode", str)
+			return messageError("MsgHeaders.BtcDecode", str)
 		}
 		msg.AddBlockHeader(bh)
 	}
@@ -77,15 +77,15 @@ func (msg *MsgHeaders) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 	return nil
 }
 
-// BchEncode encodes the receiver to w using the bitcoin protocol encoding.
+// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgHeaders) BchEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgHeaders) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	// Limit to max block headers per message.
 	count := len(msg.Headers)
 	if count > MaxBlockHeadersPerMsg {
 		str := fmt.Sprintf("too many block headers for message "+
 			"[count %v, max %v]", count, MaxBlockHeadersPerMsg)
-		return messageError("MsgHeaders.BchEncode", str)
+		return messageError("MsgHeaders.BtcEncode", str)
 	}
 
 	err := WriteVarInt(w, pver, uint64(count))

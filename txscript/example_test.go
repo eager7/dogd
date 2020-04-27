@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/eager7/dogd/bchec"
+	"github.com/eager7/dogd/btcec"
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/txscript"
@@ -20,12 +20,12 @@ import (
 // It also prints the created script hex and uses the DisasmString function to
 // display the disassembled script.
 func ExamplePayToAddrScript() {
-	// Parse the address to send the coins to into a bchutil.Address
+	// Parse the address to send the coins to into a dogutil.Address
 	// which is useful to ensure the accuracy of the address and determine
 	// the address type.  It is also required for the upcoming call to
 	// PayToAddrScript.
-	addressStr := "bitcoincash:qqfgqp8l9l90zwetj84k2jcac2m8falvvydrpuu45u"
-	address, err := bchutil.DecodeAddress(addressStr, &chaincfg.MainNetParams)
+	addressStr := "12gpXQVcCL2qhTNQgyLVdCFG2Qs2px98nV"
+	address, err := dogutil.DecodeAddress(addressStr, &chaincfg.MainNetParams)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -75,7 +75,7 @@ func ExampleExtractPkScriptAddrs() {
 
 	// Output:
 	// Script Class: pubkeyhash
-	// Addresses: [qqfgqp8l9l90zwetj84k2jcac2m8falvvydrpuu45u]
+	// Addresses: [12gpXQVcCL2qhTNQgyLVdCFG2Qs2px98nV]
 	// Required Signatures: 1
 }
 
@@ -89,9 +89,9 @@ func ExampleSignTxOutput() {
 		fmt.Println(err)
 		return
 	}
-	privKey, pubKey := bchec.PrivKeyFromBytes(bchec.S256(), privKeyBytes)
-	pubKeyHash := bchutil.Hash160(pubKey.SerializeCompressed())
-	addr, err := bchutil.NewAddressPubKeyHash(pubKeyHash,
+	privKey, pubKey := btcec.PrivKeyFromBytes(btcec.S256(), privKeyBytes)
+	pubKeyHash := dogutil.Hash160(pubKey.SerializeCompressed())
+	addr, err := dogutil.NewAddressPubKeyHash(pubKeyHash,
 		&chaincfg.MainNetParams)
 	if err != nil {
 		fmt.Println(err)
@@ -100,10 +100,10 @@ func ExampleSignTxOutput() {
 
 	// For this example, create a fake transaction that represents what
 	// would ordinarily be the real transaction that is being spent.  It
-	// contains a single output that pays to address in the amount of 1 BCH.
+	// contains a single output that pays to address in the amount of 1 BTC.
 	originTx := wire.NewMsgTx(wire.TxVersion)
 	prevOut := wire.NewOutPoint(&chainhash.Hash{}, ^uint32(0))
-	txIn := wire.NewTxIn(prevOut, []byte{txscript.OP_0, txscript.OP_0})
+	txIn := wire.NewTxIn(prevOut, []byte{txscript.OP_0, txscript.OP_0}, nil)
 	originTx.AddTxIn(txIn)
 	pkScript, err := txscript.PayToAddrScript(addr)
 	if err != nil {
@@ -121,7 +121,7 @@ func ExampleSignTxOutput() {
 	// signature script at this point since it hasn't been created or signed
 	// yet, hence nil is provided for it.
 	prevOut = wire.NewOutPoint(&originTxHash, 0)
-	txIn = wire.NewTxIn(prevOut, nil)
+	txIn = wire.NewTxIn(prevOut, nil, nil)
 	redeemTx.AddTxIn(txIn)
 
 	// Ordinarily this would contain that actual destination of the funds,
@@ -130,7 +130,7 @@ func ExampleSignTxOutput() {
 	redeemTx.AddTxOut(txOut)
 
 	// Sign the redeeming transaction.
-	lookupKey := func(a bchutil.Address) (*bchec.PrivateKey, bool, error) {
+	lookupKey := func(a dogutil.Address) (*btcec.PrivateKey, bool, error) {
 		// Ordinarily this function would involve looking up the private
 		// key for the provided address, but since the only thing being
 		// signed in this example uses the address associated with the
@@ -152,7 +152,7 @@ func ExampleSignTxOutput() {
 	// used.  It must be specified when pay-to-script-hash transactions are
 	// being signed.
 	sigScript, err := txscript.SignTxOutput(&chaincfg.MainNetParams,
-		redeemTx, 0, -1, originTx.TxOut[0].PkScript, txscript.SigHashAll,
+		redeemTx, 0, originTx.TxOut[0].PkScript, txscript.SigHashAll,
 		txscript.KeyClosure(lookupKey), nil, nil)
 	if err != nil {
 		fmt.Println(err)
@@ -164,9 +164,7 @@ func ExampleSignTxOutput() {
 	// script pair.
 	flags := txscript.ScriptBip16 | txscript.ScriptVerifyDERSignatures |
 		txscript.ScriptStrictMultiSig |
-		txscript.ScriptDiscourageUpgradableNops |
-		txscript.ScriptVerifyBip143SigHash |
-		txscript.ScriptVerifySchnorr
+		txscript.ScriptDiscourageUpgradableNops
 	vm, err := txscript.NewEngine(originTx.TxOut[0].PkScript, redeemTx, 0,
 		flags, nil, nil, -1)
 	if err != nil {

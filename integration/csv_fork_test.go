@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/eager7/dogd/bchec"
 	"github.com/eager7/dogd/blockchain"
+	"github.com/eager7/dogd/btcec"
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/integration/rpctest"
@@ -24,13 +24,6 @@ import (
 	"github.com/eager7/dogutil"
 )
 
-// fixedExcessiveBlockSize should not be the default -we want to ensure it will work in all cases
-const fixedExcessiveBlockSize uint32 = 42111000
-
-func init() {
-	wire.SetLimits(fixedExcessiveBlockSize)
-}
-
 const (
 	csvKey = "csv"
 )
@@ -38,18 +31,18 @@ const (
 // makeTestOutput creates an on-chain output paying to a freshly generated
 // p2pkh output with the specified amount.
 func makeTestOutput(r *rpctest.Harness, t *testing.T,
-	amt bchutil.Amount) (*bchec.PrivateKey, *wire.OutPoint, []byte, error) {
+	amt dogutil.Amount) (*btcec.PrivateKey, *wire.OutPoint, []byte, error) {
 
 	// Create a fresh key, then send some coins to an address spendable by
 	// that key.
-	key, err := bchec.NewPrivateKey(bchec.S256())
+	key, err := btcec.NewPrivateKey(btcec.S256())
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	// Using the key created above, generate a pkScript which it's able to
 	// spend.
-	a, err := bchutil.NewAddressPubKey(key.PubKey().SerializeCompressed(), r.ActiveNet)
+	a, err := dogutil.NewAddressPubKey(key.PubKey().SerializeCompressed(), r.ActiveNet)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -115,18 +108,18 @@ func makeTestOutput(r *rpctest.Harness, t *testing.T,
 func TestBIP0113Activation(t *testing.T) {
 	t.Parallel()
 
-	bchdCfg := []string{"--rejectnonstd"}
-	r, err := rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg)
+	btcdCfg := []string{"--rejectnonstd"}
+	r, err := rpctest.New(&chaincfg.SimNetParams, nil, btcdCfg)
 	if err != nil {
 		t.Fatal("unable to create primary harness: ", err)
 	}
-	defer r.TearDown()
 	if err := r.SetUp(true, 1); err != nil {
 		t.Fatalf("unable to setup test chain: %v", err)
 	}
+	defer r.TearDown()
 
 	// Create a fresh output for usage within the test below.
-	const outputValue = bchutil.SatoshiPerBitcoin
+	const outputValue = dogutil.SatoshiPerBitcoin
 	outputKey, testOutput, testPkScript, err := makeTestOutput(r, t,
 		outputValue)
 	if err != nil {
@@ -164,7 +157,7 @@ func TestBIP0113Activation(t *testing.T) {
 	}
 	tx.LockTime = uint32(chainInfo.MedianTime) + 1
 
-	sigScript, err := txscript.SignatureScript(tx, 0, outputValue, testPkScript,
+	sigScript, err := txscript.SignatureScript(tx, 0, testPkScript,
 		txscript.SigHashAll, outputKey, true)
 	if err != nil {
 		t.Fatalf("unable to generate sig: %v", err)
@@ -184,7 +177,7 @@ func TestBIP0113Activation(t *testing.T) {
 
 	// However, since the block validation consensus rules haven't yet
 	// activated, a block including the transaction should be accepted.
-	txns := []*bchutil.Tx{bchutil.NewTx(tx)}
+	txns := []*dogutil.Tx{dogutil.NewTx(tx)}
 	block, err := r.GenerateAndSubmitBlock(txns, -1, time.Time{})
 	if err != nil {
 		t.Fatalf("unable to submit block: %v", err)
@@ -251,7 +244,7 @@ func TestBIP0113Activation(t *testing.T) {
 			Value:    outputValue - 1000,
 		})
 		tx.LockTime = uint32(medianTimePast + timeLockDelta)
-		sigScript, err = txscript.SignatureScript(tx, 0, outputValue, testPkScript,
+		sigScript, err = txscript.SignatureScript(tx, 0, testPkScript,
 			txscript.SigHashAll, outputKey, true)
 		if err != nil {
 			t.Fatalf("unable to generate sig: %v", err)
@@ -273,7 +266,7 @@ func TestBIP0113Activation(t *testing.T) {
 				"due to being  non-final, instead: %v", err)
 		}
 
-		txns = []*bchutil.Tx{bchutil.NewTx(tx)}
+		txns = []*dogutil.Tx{dogutil.NewTx(tx)}
 		_, err := r.GenerateAndSubmitBlock(txns, -1, time.Time{})
 		if err == nil && timeLockDelta >= 0 {
 			t.Fatal("block should be rejected due to non-final " +
@@ -288,7 +281,7 @@ func TestBIP0113Activation(t *testing.T) {
 // createCSVOutput creates an output paying to a trivially redeemable CSV
 // pkScript with the specified time-lock.
 func createCSVOutput(r *rpctest.Harness, t *testing.T,
-	numSatoshis bchutil.Amount, timeLock int32,
+	numSatoshis dogutil.Amount, timeLock int32,
 	isSeconds bool) ([]byte, *wire.OutPoint, *wire.MsgTx, error) {
 
 	// Convert the time-lock to the proper sequence lock based according to
@@ -308,7 +301,7 @@ func createCSVOutput(r *rpctest.Harness, t *testing.T,
 
 	// Using the script generated above, create a P2SH output which will be
 	// accepted into the mempool.
-	p2shAddr, err := bchutil.NewAddressScriptHash(csvScript, r.ActiveNet)
+	p2shAddr, err := dogutil.NewAddressScriptHash(csvScript, r.ActiveNet)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -365,22 +358,6 @@ func spendCSVOutput(redeemScript []byte, csvUTXO *wire.OutPoint,
 	}
 	tx.TxIn[0].SignatureScript = sigScript
 
-	// We need to pad this transaction with an OP_RETURN to get
-	// it over the min size.
-	b2 := txscript.NewScriptBuilder().
-		AddOp(txscript.OP_RETURN).
-		AddData([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
-
-	dataCarrierScript, err := b2.Script()
-	if err != nil {
-		return nil, err
-	}
-	output2 := &wire.TxOut{
-		PkScript: dataCarrierScript,
-		Value:    0,
-	}
-	tx.AddTxOut(output2)
-
 	return tx, nil
 }
 
@@ -427,15 +404,15 @@ func TestBIP0068AndBIP0112Activation(t *testing.T) {
 	// (sequence locks) and BIP 112 rule-sets which add input-age based
 	// relative lock times.
 
-	bchdCfg := []string{"--rejectnonstd"}
-	r, err := rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg)
+	btcdCfg := []string{"--rejectnonstd"}
+	r, err := rpctest.New(&chaincfg.SimNetParams, nil, btcdCfg)
 	if err != nil {
 		t.Fatal("unable to create primary harness: ", err)
 	}
-	defer r.TearDown()
 	if err := r.SetUp(true, 1); err != nil {
 		t.Fatalf("unable to setup test chain: %v", err)
 	}
+	defer r.TearDown()
 
 	assertSoftForkStatus(r, t, csvKey, blockchain.ThresholdStarted)
 
@@ -449,7 +426,7 @@ func TestBIP0068AndBIP0112Activation(t *testing.T) {
 	}
 
 	const (
-		outputAmt         = bchutil.SatoshiPerBitcoin
+		outputAmt         = dogutil.SatoshiPerBitcoin
 		relativeBlockLock = 10
 	)
 
@@ -501,7 +478,7 @@ func TestBIP0068AndBIP0112Activation(t *testing.T) {
 		// However, this transaction should be accepted in a custom
 		// generated block as CSV validation for scripts within blocks
 		// shouldn't yet be active.
-		txns := []*bchutil.Tx{bchutil.NewTx(spendingTx)}
+		txns := []*dogutil.Tx{dogutil.NewTx(spendingTx)}
 		block, err := r.GenerateAndSubmitBlock(txns, -1, time.Time{})
 		if err != nil {
 			t.Fatalf("unable to submit block: %v", err)
@@ -698,7 +675,7 @@ func TestBIP0068AndBIP0112Activation(t *testing.T) {
 		// If the transaction should be rejected, manually mine a block
 		// with the non-final transaction. It should be rejected.
 		if !test.accept {
-			txns := []*bchutil.Tx{bchutil.NewTx(test.tx)}
+			txns := []*dogutil.Tx{dogutil.NewTx(test.tx)}
 			_, err := r.GenerateAndSubmitBlock(txns, -1, time.Time{})
 			if err == nil {
 				t.Fatalf("test #%d, invalid block accepted", i)

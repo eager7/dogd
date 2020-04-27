@@ -59,19 +59,6 @@ var (
 	// transactions outputs that are spent in each block.
 	spendJournalBucketName = []byte("spendjournal")
 
-	// utxoStateConsistencyKeyName is the name of the db key used to store the
-	// consistency status of the utxo state.
-	utxoStateConsistencyKeyName = []byte("utxostateconsistency")
-
-	// blockchainTypeKeyName is the name of the db key used to store the
-	// prune status of the blockchain. If it was ever run in prune mode
-	// or fastsync mode then it should be treated as a pruned chain.
-	blockchainTypeKeyName = []byte("blockchaintype")
-
-	// prunedBlockchainEntryValue is the value the corresponds to a
-	// pruned blockchain.
-	prunedBlockchainEntryValue = []byte("prunedblockchain")
-
 	// utxoSetVersionKeyName is the name of the db key used to store the
 	// version of the utxo set currently in the database.
 	utxoSetVersionKeyName = []byte("utxosetversion")
@@ -79,10 +66,6 @@ var (
 	// utxoSetBucketName is the name of the db bucket used to house the
 	// unspent transaction output set.
 	utxoSetBucketName = []byte("utxosetv2")
-
-	// pruneHeightKeyName is the name of the db key used to store the
-	// height at which the blockchain is pruned.
-	pruneHeightKeyName = []byte("pruneheight")
 
 	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
@@ -220,7 +203,7 @@ func dbFetchOrCreateVersion(dbTx database.Tx, key []byte, defaultVersion uint32)
 //  - header code: 0x13 (coinbase, height 9)
 //  - reserved: 0x00
 //  - compressed txout 0:
-//    - 0x32: VLQ-encoded compressed amount for 5000000000 (50 BCH)
+//    - 0x32: VLQ-encoded compressed amount for 5000000000 (50 BTC)
 //    - 0x05: special script type pay-to-pubkey
 //    - 0x11...5c: x-coordinate of the pubkey
 //
@@ -237,14 +220,14 @@ func dbFetchOrCreateVersion(dbTx database.Tx, key []byte, defaultVersion uint32)
 //    - header code: 0x8b9970 (not coinbase, height 100024)
 //    - reserved: 0x00
 //    - compressed txout:
-//      - 0x91f20f: VLQ-encoded compressed amount for 34405000000 (344.05 BCH)
+//      - 0x91f20f: VLQ-encoded compressed amount for 34405000000 (344.05 BTC)
 //      - 0x00: special script type pay-to-pubkey-hash
 //      - 0x6e...86: pubkey hash
 //  - Second to last spent output:
 //    - header code: 0x8b9970 (not coinbase, height 100024)
 //    - reserved: 0x00
 //    - compressed txout:
-//      - 0x86c647: VLQ-encoded compressed amount for 13761000000 (137.61 BCH)
+//      - 0x86c647: VLQ-encoded compressed amount for 13761000000 (137.61 BTC)
 //      - 0x00: special script type pay-to-pubkey-hash
 //      - 0xb2...ec: pubkey hash
 // -----------------------------------------------------------------------------
@@ -276,7 +259,7 @@ type SpentTxOut struct {
 // main chain.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) FetchSpendJournal(targetBlock *bchutil.Block) ([]SpentTxOut, error) {
+func (b *BlockChain) FetchSpendJournal(targetBlock *dogutil.Block) ([]SpentTxOut, error) {
 	b.chainLock.RLock()
 	defer b.chainLock.RUnlock()
 
@@ -470,7 +453,7 @@ func serializeSpendJournalEntry(stxos []SpentTxOut) []byte {
 // NOTE: Legacy entries will not have the coinbase flag or height set unless it
 // was the final output spend in the containing transaction.  It is up to the
 // caller to handle this properly by looking the information up in the utxo set.
-func dbFetchSpendJournalEntry(dbTx database.Tx, block *bchutil.Block) ([]SpentTxOut, error) {
+func dbFetchSpendJournalEntry(dbTx database.Tx, block *dogutil.Block) ([]SpentTxOut, error) {
 	// Exclude the coinbase transaction since it can't spend anything.
 	spendBucket := dbTx.Metadata().Bucket(spendJournalBucketName)
 	serialized := spendBucket.Get(block.Hash()[:])
@@ -554,7 +537,7 @@ func dbRemoveSpendJournalEntry(dbTx database.Tx, blockHash *chainhash.Hash) erro
 //
 //  - header code: 0x03 (coinbase, height 1)
 //  - compressed txout:
-//    - 0x32: VLQ-encoded compressed amount for 5000000000 (50 BCH)
+//    - 0x32: VLQ-encoded compressed amount for 5000000000 (50 BTC)
 //    - 0x04: special script type pay-to-pubkey
 //    - 0x96...52: x-coordinate of the pubkey
 //
@@ -569,7 +552,7 @@ func dbRemoveSpendJournalEntry(dbTx database.Tx, blockHash *chainhash.Hash) erro
 //
 //  - header code: 0x8cf316 (not coinbase, height 113931)
 //  - compressed txout:
-//    - 0x8009: VLQ-encoded compressed amount for 15000000 (0.15 BCH)
+//    - 0x8009: VLQ-encoded compressed amount for 15000000 (0.15 BTC)
 //    - 0x00: special script type pay-to-pubkey-hash
 //    - 0xb8...58: pubkey hash
 //
@@ -584,7 +567,7 @@ func dbRemoveSpendJournalEntry(dbTx database.Tx, blockHash *chainhash.Hash) erro
 //
 //  - header code: 0xa8a258 (not coinbase, height 338156)
 //  - compressed txout:
-//    - 0x8ba5b9e763: VLQ-encoded compressed amount for 366875659 (3.66875659 BCH)
+//    - 0x8ba5b9e763: VLQ-encoded compressed amount for 366875659 (3.66875659 BTC)
 //    - 0x01: special script type pay-to-script-hash
 //    - 0x1d...e6: script hash
 // -----------------------------------------------------------------------------
@@ -618,14 +601,6 @@ func outpointKey(outpoint wire.OutPoint) *[]byte {
 	copy(*key, outpoint.Hash[:])
 	putVLQ((*key)[chainhash.HashSize:], idx)
 	return key
-}
-
-// DeserializeOutpointKey takes in a Utxo database key and deserializes
-// it into an outpoint.
-func DeserializeOutpointKey(key []byte) *wire.OutPoint {
-	h, _ := chainhash.NewHash(key[:chainhash.HashSize])
-	idx, _ := deserializeVLQ(key[chainhash.HashSize:])
-	return wire.NewOutPoint(h, uint32(idx))
 }
 
 // recycleOutpointKey puts the provided byte slice, which should have been
@@ -674,16 +649,16 @@ func serializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
 	// transaction output.
 	serialized := make([]byte, size)
 	offset := putVLQ(serialized, headerCode)
-	putCompressedTxOut(serialized[offset:], uint64(entry.Amount()),
+	offset += putCompressedTxOut(serialized[offset:], uint64(entry.Amount()),
 		entry.PkScript())
 
 	return serialized, nil
 }
 
-// DeserializeUtxoEntry decodes a utxo entry from the passed serialized byte
+// deserializeUtxoEntry decodes a utxo entry from the passed serialized byte
 // slice into a new UtxoEntry using a format that is suitable for long-term
 // storage.  The format is described in detail above.
-func DeserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
+func deserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
 	// Deserialize the header code.
 	code, offset := deserializeVLQ(serialized)
 	if offset >= len(serialized) {
@@ -717,39 +692,6 @@ func DeserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
 	return entry, nil
 }
 
-// deserializeUtxoCommitmentFormat takes a Utxo serialized in the commitment format and
-// deserializes it into an OutPoint and UtxoEntry.
-func deserializeUtxoCommitmentFormat(serialized []byte) (*wire.OutPoint, *UtxoEntry, error) {
-	txid, err := chainhash.NewHash(serialized[:32])
-	if err != nil {
-		return nil, nil, err
-	}
-	index := binary.LittleEndian.Uint32(serialized[32:36])
-
-	serializedHeight := serialized[36:40]
-	coinbaseFlag := serializedHeight[3] & 0x01
-
-	serializedHeight[3] &= 0xFE
-
-	height := binary.LittleEndian.Uint32(serializedHeight)
-
-	value := binary.LittleEndian.Uint64(serialized[40:48])
-
-	pkScript := serialized[52:]
-
-	op := wire.NewOutPoint(txid, index)
-	entry := &UtxoEntry{
-		amount:      int64(value),
-		blockHeight: int32(height),
-		pkScript:    pkScript,
-		packedFlags: 0,
-	}
-	if coinbaseFlag > 0 {
-		entry.packedFlags |= tfCoinBase
-	}
-	return op, entry, nil
-}
-
 // dbFetchUtxoEntryByHash attempts to find and fetch a utxo for the given hash.
 // It uses a cursor and seek to try and do this as efficiently as possible.
 //
@@ -779,7 +721,7 @@ func dbFetchUtxoEntryByHash(dbTx database.Tx, hash *chainhash.Hash) (*UtxoEntry,
 		return nil, nil
 	}
 
-	return DeserializeUtxoEntry(cursor.Value())
+	return deserializeUtxoEntry(cursor.Value())
 }
 
 // dbFetchUtxoEntry uses an existing database transaction to fetch the specified
@@ -806,7 +748,7 @@ func dbFetchUtxoEntry(dbTx database.Tx, outpoint wire.OutPoint) (*UtxoEntry, err
 	}
 
 	// Deserialize the utxo entry and return it.
-	entry, err := DeserializeUtxoEntry(serializedUtxo)
+	entry, err := deserializeUtxoEntry(serializedUtxo)
 	if err != nil {
 		// Ensure any deserialization errors are returned as database
 		// corruption errors.
@@ -824,13 +766,28 @@ func dbFetchUtxoEntry(dbTx database.Tx, outpoint wire.OutPoint) (*UtxoEntry, err
 	return entry, nil
 }
 
-// dbPutUtxoEntries uses an existing database transaction to update the utxo
-// entries in the database.
-func dbPutUtxoEntries(dbTx database.Tx, entries map[wire.OutPoint]*UtxoEntry) error {
+// dbPutUtxoView uses an existing database transaction to update the utxo set
+// in the database based on the provided utxo view contents and state.  In
+// particular, only the entries that have been marked as modified are written
+// to the database.
+func dbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 	utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
-	for outpoint, entry := range entries {
-		if entry == nil || entry.IsSpent() {
-			return AssertError("trying to store nil or spent entry")
+	for outpoint, entry := range view.entries {
+		// No need to update the database if the entry was not modified.
+		if entry == nil || !entry.isModified() {
+			continue
+		}
+
+		// Remove the utxo entry if it is spent.
+		if entry.IsSpent() {
+			key := outpointKey(outpoint)
+			err := utxoBucket.Delete(*key)
+			recycleOutpointKey(key)
+			if err != nil {
+				return err
+			}
+
+			continue
 		}
 
 		// Serialize and store the utxo entry.
@@ -838,30 +795,17 @@ func dbPutUtxoEntries(dbTx database.Tx, entries map[wire.OutPoint]*UtxoEntry) er
 		if err != nil {
 			return err
 		}
+		key := outpointKey(outpoint)
+		err = utxoBucket.Put(*key, serialized)
 		// NOTE: The key is intentionally not recycled here since the
 		// database interface contract prohibits modifications.  It will
 		// be garbage collected normally when the database is done with
 		// it.
-		key := outpointKey(outpoint)
-		if err := utxoBucket.Put(*key, serialized); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// dbDeleteUtxoEntries uses an existing database transaction to delete the utxo
-// entries from the database.
-func dbDeleteUtxoEntries(dbTx database.Tx, outpoints []wire.OutPoint) error {
-	utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
-	for _, outpoint := range outpoints {
-		key := outpointKey(outpoint)
-		err := utxoBucket.Delete(*key)
-		recycleOutpointKey(key)
 		if err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -1055,135 +999,12 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState, workSum *big.Int) err
 	return dbTx.Metadata().Put(chainStateKeyName, serializedData)
 }
 
-// -----------------------------------------------------------------------------
-// The utxo state consistency status is stored as the last hash at which the
-// state finished a flush and an indicator whether it was left in the middle
-// of a flush.
-//
-// The serialized format is:
-//
-//   <status code><consistent hash>
-//
-//   Field             Type             Size
-//   status code       byte             1
-//   consistent hash   chainhash.Hash   chainhash.HashSize
-//
-// The possible values for the state code are:
-//
-//   1: consistent with the given hash, no flush ongoing
-//   2: flush ongoing from the stored consistent hash to best state (see best
-//      state bucket)
-// -----------------------------------------------------------------------------
-const (
-	// UTXO consistency status (UCS) codes are used to indicate the
-	// consistency status of the utxo state in the database.
-	// ucsEmpty is used as a return value to indicate that no status was
-	// stored.  The zero value should not be stored in the database.
-	ucsEmpty        byte = 0
-	ucsConsistent        = 1
-	ucsFlushOngoing      = 2
-	// ucsNbCodes is the number of valid utxo consistency status codes.
-	ucsNbCodes = 3
-)
-
-// serializeUtxoStateConsistency serializes the utxo state consistency status
-// based on the given status code and hash.
-func serializeUtxoStateConsistency(code byte, hash *chainhash.Hash) []byte {
-	// Serialize the data as code + hash.
-	serialized := make([]byte, 1+chainhash.HashSize)
-	serialized[0] = code
-	copy(serialized[1:], hash[:])
-	return serialized
-}
-
-// deserializeUtxoStateConsistency deserializes the bytes representing the utxo
-// state consistency status into the status code and hash.
-func deserializeUtxoStateConsistency(serialized []byte) (byte, *chainhash.Hash, error) {
-	// Size must be status code byte + single hash.
-	if len(serialized) != chainhash.HashSize+1 {
-		return 0, nil, database.Error{
-			ErrorCode:   database.ErrCorruption,
-			Description: "corrupt utxo state consistency status",
-		}
-	}
-	code := serialized[0]
-	if code >= ucsNbCodes {
-		return 0, nil, database.Error{
-			ErrorCode:   database.ErrCorruption,
-			Description: "corrupt utxo state consistency status: unknown code",
-		}
-	}
-	// Ignore error as this only fails on incorrect hash size.
-	hash, _ := chainhash.NewHash(serialized[1 : 1+chainhash.HashSize])
-	return code, hash, nil
-}
-
-// dbPutUtxoStateConsistency uses an existing database transaction to
-// update the utxo state consistency status with the given parameters.
-func dbPutUtxoStateConsistency(dbTx database.Tx, code byte, hash *chainhash.Hash) error {
-	// Seralize the utxo state consistency status.
-	serialized := serializeUtxoStateConsistency(code, hash)
-	// Store the utxo state consistency status into the database.
-	return dbTx.Metadata().Put(utxoStateConsistencyKeyName, serialized)
-}
-
-// dbFetchUtxoStateConsistency uses an existing database transaction to retrieve
-// the utxo state consistency status from the database.  The code is 0 when
-// nothing was found.
-func dbFetchUtxoStateConsistency(dbTx database.Tx) (byte, *chainhash.Hash, error) {
-	// Fetch the serialized data from the database.
-	serialized := dbTx.Metadata().Get(utxoStateConsistencyKeyName)
-	if serialized == nil {
-		// Not stored, so return empty state.
-		return ucsEmpty, nil, nil
-	}
-	// Deserialize to the consistency status.
-	return deserializeUtxoStateConsistency(serialized)
-}
-
-// dbPutBlockchainType uses an existing database transaction to
-// update the blockchain type entry with the provided type.
-func dbPutBlockchainType(dbTx database.Tx, chainType []byte) error {
-	// Store the chain type into the database.
-	return dbTx.Metadata().Put(blockchainTypeKeyName, chainType)
-}
-
-// dbFetchBlockchainType uses an existing database transaction to retrieve
-// the blockchain type from the database.  The returned bytes is nil if
-// nothing is found.
-func dbFetchBlockchainType(dbTx database.Tx) []byte {
-	// Fetch the chain type from the database.
-	return dbTx.Metadata().Get(blockchainTypeKeyName)
-}
-
-// dbPutPruneHeight uses an existing database transaction to
-// update the prune height.
-func dbPutPruneHeight(dbTx database.Tx, height uint32) error {
-	buf := make([]byte, 4)
-	byteOrder.PutUint32(buf, height)
-	// Store the height into the database.
-	return dbTx.Metadata().Put(pruneHeightKeyName, buf)
-}
-
-// dbFetchPruneHeight uses an existing database transaction to retrieve
-// the prune height from the database. If the height comes back nil we
-// return zero.
-func dbFetchPruneHeight(dbTx database.Tx) uint32 {
-	// Fetch the serialized data from the database.
-	serialized := dbTx.Metadata().Get(pruneHeightKeyName)
-	if serialized == nil {
-		return 0
-	}
-	// Deserialize to the height.
-	return byteOrder.Uint32(serialized)
-}
-
 // createChainState initializes both the database and the chain state to the
 // genesis block.  This includes creating the necessary buckets and inserting
 // the genesis block, so it must only be called on an uninitialized database.
 func (b *BlockChain) createChainState() error {
 	// Create a new node from the genesis block and set it as the best node.
-	genesisBlock := bchutil.NewBlock(b.chainParams.GenesisBlock)
+	genesisBlock := dogutil.NewBlock(b.chainParams.GenesisBlock)
 	genesisBlock.SetHeight(0)
 	header := &genesisBlock.MsgBlock().Header
 	node := newBlockNode(header, nil)
@@ -1197,7 +1018,8 @@ func (b *BlockChain) createChainState() error {
 	// genesis block, use its timestamp for the median time.
 	numTxns := uint64(len(genesisBlock.MsgBlock().Transactions))
 	blockSize := uint64(genesisBlock.MsgBlock().SerializeSize())
-	b.stateSnapshot = newBestState(node, blockSize, numTxns,
+	blockWeight := uint64(GetBlockWeight(genesisBlock))
+	b.stateSnapshot = newBestState(node, blockSize, blockWeight, numTxns,
 		numTxns, time.Unix(node.timestamp, 0))
 
 	// Create the initial the database chain state including creating the
@@ -1279,7 +1101,7 @@ func (b *BlockChain) createChainState() error {
 // initChainState attempts to load and initialize the chain state from the
 // database.  When the db does not yet contain any chain state, both it and the
 // chain state are initialized to the genesis block.
-func (b *BlockChain) initChainState(fastSync bool) error {
+func (b *BlockChain) initChainState() error {
 	// Determine the state of the chain database. We may need to initialize
 	// everything from scratch or upgrade certain buckets.
 	var initialized, hasBlockIndex bool
@@ -1379,7 +1201,6 @@ func (b *BlockChain) initChainState(fastSync bool) error {
 			lastNode = node
 			i++
 		}
-		log.Debug("Done loading block index")
 
 		// Set the best chain view to the stored best state.
 		tip := b.index.LookupNode(&state.hash)
@@ -1390,18 +1211,14 @@ func (b *BlockChain) initChainState(fastSync bool) error {
 		b.bestChain.SetTip(tip)
 
 		// Load the raw block bytes for the best block.
+		blockBytes, err := dbTx.FetchBlock(&state.hash)
+		if err != nil {
+			return err
+		}
 		var block wire.MsgBlock
-		var blockBytes []byte
-		lastCheckpoint := b.LatestCheckpoint()
-		if !fastSync || (lastCheckpoint != nil && tip.height > lastCheckpoint.Height) {
-			blockBytes, err = dbTx.FetchBlock(&state.hash)
-			if err != nil {
-				return err
-			}
-			err = block.Deserialize(bytes.NewReader(blockBytes))
-			if err != nil {
-				return err
-			}
+		err = block.Deserialize(bytes.NewReader(blockBytes))
+		if err != nil {
+			return err
 		}
 
 		// As a final consistency check, we'll run through all the
@@ -1425,9 +1242,10 @@ func (b *BlockChain) initChainState(fastSync bool) error {
 
 		// Initialize the state related to the best block.
 		blockSize := uint64(len(blockBytes))
+		blockWeight := uint64(GetBlockWeight(dogutil.NewBlock(&block)))
 		numTxns := uint64(len(block.Transactions))
-		b.stateSnapshot = newBestState(tip, blockSize, numTxns,
-			state.totalTxns, tip.CalcPastMedianTime())
+		b.stateSnapshot = newBestState(tip, blockSize, blockWeight,
+			numTxns, state.totalTxns, tip.CalcPastMedianTime())
 
 		return nil
 	})
@@ -1489,9 +1307,9 @@ func dbFetchHeaderByHeight(dbTx database.Tx, height int32) (*wire.BlockHeader, e
 }
 
 // dbFetchBlockByNode uses an existing database transaction to retrieve the
-// raw block for the provided node, deserialize it, and return a bchutil.Block
+// raw block for the provided node, deserialize it, and return a dogutil.Block
 // with the height set.
-func dbFetchBlockByNode(dbTx database.Tx, node *blockNode) (*bchutil.Block, error) {
+func dbFetchBlockByNode(dbTx database.Tx, node *blockNode) (*dogutil.Block, error) {
 	// Load the raw block bytes from the database.
 	blockBytes, err := dbTx.FetchBlock(&node.hash)
 	if err != nil {
@@ -1499,7 +1317,7 @@ func dbFetchBlockByNode(dbTx database.Tx, node *blockNode) (*bchutil.Block, erro
 	}
 
 	// Create the encapsulated block and set the height appropriately.
-	block, err := bchutil.NewBlockFromBytes(blockBytes)
+	block, err := dogutil.NewBlockFromBytes(blockBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -1532,7 +1350,7 @@ func dbStoreBlockNode(dbTx database.Tx, node *blockNode) error {
 
 // dbStoreBlock stores the provided block in the database if it is not already
 // there. The full block data is written to ffldb.
-func dbStoreBlock(dbTx database.Tx, block *bchutil.Block) error {
+func dbStoreBlock(dbTx database.Tx, block *dogutil.Block) error {
 	hasBlock, err := dbTx.HasBlock(block.Hash())
 	if err != nil {
 		return err
@@ -1556,7 +1374,7 @@ func blockIndexKey(blockHash *chainhash.Hash, blockHeight uint32) []byte {
 // BlockByHeight returns the block at the given height in the main chain.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) BlockByHeight(blockHeight int32) (*bchutil.Block, error) {
+func (b *BlockChain) BlockByHeight(blockHeight int32) (*dogutil.Block, error) {
 	// Lookup the block height in the best chain.
 	node := b.bestChain.NodeByHeight(blockHeight)
 	if node == nil {
@@ -1565,7 +1383,7 @@ func (b *BlockChain) BlockByHeight(blockHeight int32) (*bchutil.Block, error) {
 	}
 
 	// Load the block from the database and return it.
-	var block *bchutil.Block
+	var block *dogutil.Block
 	err := b.db.View(func(dbTx database.Tx) error {
 		var err error
 		block, err = dbFetchBlockByNode(dbTx, node)
@@ -1578,7 +1396,7 @@ func (b *BlockChain) BlockByHeight(blockHeight int32) (*bchutil.Block, error) {
 // the appropriate chain height set.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*bchutil.Block, error) {
+func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*dogutil.Block, error) {
 	// Lookup the block hash in block index and ensure it is in the best
 	// chain.
 	node := b.index.LookupNode(hash)
@@ -1588,7 +1406,7 @@ func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*bchutil.Block, error) {
 	}
 
 	// Load the block from the database and return it.
-	var block *bchutil.Block
+	var block *dogutil.Block
 	err := b.db.View(func(dbTx database.Tx) error {
 		var err error
 		block, err = dbFetchBlockByNode(dbTx, node)

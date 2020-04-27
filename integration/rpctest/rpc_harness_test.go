@@ -20,22 +20,15 @@ import (
 	"github.com/eager7/dogutil"
 )
 
-// fixedExcessiveBlockSize should not be the default -we want to ensure it will work in all cases
-const fixedExcessiveBlockSize uint32 = 42111000
-
-func init() {
-	wire.SetLimits(fixedExcessiveBlockSize)
-}
-
 func testSendOutputs(r *Harness, t *testing.T) {
-	genSpend := func(amt bchutil.Amount) *chainhash.Hash {
+	genSpend := func(amt dogutil.Amount) *chainhash.Hash {
 		// Grab a fresh address from the wallet.
 		addr, err := r.NewAddress()
 		if err != nil {
 			t.Fatalf("unable to get new address: %v", err)
 		}
 
-		// Next, send amt BCH to this address, spending from one of our mature
+		// Next, send amt BTC to this address, spending from one of our mature
 		// coinbase outputs.
 		addrScript, err := txscript.PayToAddrScript(addr)
 		if err != nil {
@@ -70,7 +63,7 @@ func testSendOutputs(r *Harness, t *testing.T) {
 
 	// First, generate a small spend which will require only a single
 	// input.
-	txid := genSpend(bchutil.Amount(5 * bchutil.SatoshiPerBitcoin))
+	txid := genSpend(dogutil.Amount(5 * dogutil.SatoshiPerBitcoin))
 
 	// Generate a single block, the transaction the wallet created should
 	// be found in this block.
@@ -82,7 +75,7 @@ func testSendOutputs(r *Harness, t *testing.T) {
 
 	// Next, generate a spend much greater than the block reward. This
 	// transaction should also have been mined properly.
-	txid = genSpend(bchutil.Amount(500 * bchutil.SatoshiPerBitcoin))
+	txid = genSpend(dogutil.Amount(500 * dogutil.SatoshiPerBitcoin))
 	blockHashes, err = r.Node.Generate(1)
 	if err != nil {
 		t.Fatalf("unable to generate single block: %v", err)
@@ -116,10 +109,10 @@ func testConnectNode(r *Harness, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer harness.TearDown()
 	if err := harness.SetUp(false, 0); err != nil {
 		t.Fatalf("unable to complete rpctest setup: %v", err)
 	}
+	defer harness.TearDown()
 
 	// Establish a p2p connection from our new local harness to the main
 	// harness.
@@ -192,10 +185,10 @@ func testJoinMempools(r *Harness, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer harness.TearDown()
 	if err := harness.SetUp(false, 0); err != nil {
 		t.Fatalf("unable to complete rpctest setup: %v", err)
 	}
+	defer harness.TearDown()
 
 	nodeSlice := []*Harness{r, harness}
 
@@ -208,9 +201,6 @@ func testJoinMempools(r *Harness, t *testing.T) {
 	// Generate a coinbase spend to a new address within the main harness'
 	// mempool.
 	addr, err := r.NewAddress()
-	if err != nil {
-		t.Fatalf("unable to create address: %v", err)
-	}
 	addrScript, err := txscript.PayToAddrScript(addr)
 	if err != nil {
 		t.Fatalf("unable to generate pkscript to addr: %v", err)
@@ -295,10 +285,10 @@ func testJoinBlocks(r *Harness, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer harness.TearDown()
 	if err := harness.SetUp(false, 0); err != nil {
 		t.Fatalf("unable to complete rpctest setup: %v", err)
 	}
+	defer harness.TearDown()
 
 	nodeSlice := []*Harness{r, harness}
 	blocksSynced := make(chan struct{})
@@ -345,17 +335,17 @@ func testGenerateAndSubmitBlock(r *Harness, t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to create script: %v", err)
 	}
-	output := wire.NewTxOut(bchutil.SatoshiPerBitcoin, pkScript)
+	output := wire.NewTxOut(dogutil.SatoshiPerBitcoin, pkScript)
 
 	const numTxns = 5
-	txns := make([]*bchutil.Tx, 0, numTxns)
+	txns := make([]*dogutil.Tx, 0, numTxns)
 	for i := 0; i < numTxns; i++ {
 		tx, err := r.CreateTransaction([]*wire.TxOut{output}, 10, true)
 		if err != nil {
 			t.Fatalf("unable to create tx: %v", err)
 		}
 
-		txns = append(txns, bchutil.NewTx(tx))
+		txns = append(txns, dogutil.NewTx(tx))
 	}
 
 	// Now generate a block with the default block version, and a zero'd
@@ -412,17 +402,17 @@ func testGenerateAndSubmitBlockWithCustomCoinbaseOutputs(r *Harness,
 	if err != nil {
 		t.Fatalf("unable to create script: %v", err)
 	}
-	output := wire.NewTxOut(bchutil.SatoshiPerBitcoin, pkScript)
+	output := wire.NewTxOut(dogutil.SatoshiPerBitcoin, pkScript)
 
 	const numTxns = 5
-	txns := make([]*bchutil.Tx, 0, numTxns)
+	txns := make([]*dogutil.Tx, 0, numTxns)
 	for i := 0; i < numTxns; i++ {
 		tx, err := r.CreateTransaction([]*wire.TxOut{output}, 10, true)
 		if err != nil {
 			t.Fatalf("unable to create tx: %v", err)
 		}
 
-		txns = append(txns, bchutil.NewTx(tx))
+		txns = append(txns, dogutil.NewTx(tx))
 	}
 
 	// Now generate a block with the default block version, a zero'd out
@@ -483,13 +473,13 @@ func testMemWalletReorg(r *Harness, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer harness.TearDown()
 	if err := harness.SetUp(true, 5); err != nil {
 		t.Fatalf("unable to complete rpctest setup: %v", err)
 	}
+	defer harness.TearDown()
 
-	// The internal wallet of this harness should now have 250 BCH.
-	expectedBalance := bchutil.Amount(250 * bchutil.SatoshiPerBitcoin)
+	// The internal wallet of this harness should now have 250 BTC.
+	expectedBalance := dogutil.Amount(250 * dogutil.SatoshiPerBitcoin)
 	walletBalance := harness.ConfirmedBalance()
 	if expectedBalance != walletBalance {
 		t.Fatalf("wallet balance incorrect: expected %v, got %v",
@@ -506,10 +496,10 @@ func testMemWalletReorg(r *Harness, t *testing.T) {
 		t.Fatalf("unable to join node on blocks: %v", err)
 	}
 
-	// The original wallet should now have a balance of 0 BCH as its entire
+	// The original wallet should now have a balance of 0 BTC as its entire
 	// chain should have been decimated in favor of the main harness'
 	// chain.
-	expectedBalance = bchutil.Amount(0)
+	expectedBalance = dogutil.Amount(0)
 	walletBalance = harness.ConfirmedBalance()
 	if expectedBalance != walletBalance {
 		t.Fatalf("wallet balance incorrect: expected %v, got %v",
@@ -530,14 +520,14 @@ func testMemWalletLockedOutputs(r *Harness, t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to create script: %v", err)
 	}
-	outputAmt := bchutil.Amount(50 * bchutil.SatoshiPerBitcoin)
+	outputAmt := dogutil.Amount(50 * dogutil.SatoshiPerBitcoin)
 	output := wire.NewTxOut(int64(outputAmt), pkScript)
 	tx, err := r.CreateTransaction([]*wire.TxOut{output}, 10, true)
 	if err != nil {
 		t.Fatalf("unable to create transaction: %v", err)
 	}
 
-	// The current wallet balance should now be at least 50 BCH less
+	// The current wallet balance should now be at least 50 BTC less
 	// (accounting for fees) than the period balance
 	currentBalance := r.ConfirmedBalance()
 	if !(currentBalance <= startingBalance-outputAmt) {
@@ -575,52 +565,45 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	var (
-		err      error
-		exitCode int
-	)
-	// Whatever happens, clean up active harnesses and exit with the last exit code.
-	// Note that Exit at the end of the function would ignore any defers.
-	defer func() {
-		// Clean up any active harnesses that are still currently running.This
-		// includes removing all temporary directories, and shutting down any
-		// created processes.
-		if err := TearDownAll(); err != nil {
-			// Don't set exitCode for a teardown error. Just make it visible.
-			fmt.Println("unable to tear down chain: ", err)
-		}
-		os.Exit(exitCode)
-	}()
-
+	var err error
 	mainHarness, err = New(&chaincfg.SimNetParams, nil, nil)
 	if err != nil {
 		fmt.Println("unable to create main harness: ", err)
-		exitCode = 1
-		return
+		os.Exit(1)
 	}
-	defer func() {
-		if err := mainHarness.TearDown(); err != nil {
-			// Don't set exitCode for a teardown error. Just make it visible.
-			fmt.Println("error tearing down main harness:", err)
-		}
-	}()
 
 	// Initialize the main mining node with a chain of length 125,
 	// providing 25 mature coinbases to allow spending from for testing
 	// purposes.
 	if err = mainHarness.SetUp(true, numMatureOutputs); err != nil {
 		fmt.Println("unable to setup test chain: ", err)
-		exitCode = 1
-		return
+
+		// Even though the harness was not fully setup, it still needs
+		// to be torn down to ensure all resources such as temp
+		// directories are cleaned up.  The error is intentionally
+		// ignored since this is already an error path and nothing else
+		// could be done about it anyways.
+		_ = mainHarness.TearDown()
+		os.Exit(1)
 	}
 
-	exitCode = m.Run()
+	exitCode := m.Run()
+
+	// Clean up any active harnesses that are still currently running.
+	if len(ActiveHarnesses()) > 0 {
+		if err := TearDownAll(); err != nil {
+			fmt.Println("unable to tear down chain: ", err)
+			os.Exit(1)
+		}
+	}
+
+	os.Exit(exitCode)
 }
 
 func TestHarness(t *testing.T) {
-	// We should have (numMatureOutputs * 50 BCH) of mature unspendable
+	// We should have (numMatureOutputs * 50 BTC) of mature unspendable
 	// outputs.
-	expectedBalance := bchutil.Amount(numMatureOutputs * 50 * bchutil.SatoshiPerBitcoin)
+	expectedBalance := dogutil.Amount(numMatureOutputs * 50 * dogutil.SatoshiPerBitcoin)
 	harnessBalance := mainHarness.ConfirmedBalance()
 	if harnessBalance != expectedBalance {
 		t.Fatalf("expected wallet balance of %v instead have %v",

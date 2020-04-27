@@ -1,7 +1,7 @@
 mempool
 =======
 
-[![Build Status](https://travis-ci.org/eager7/dogd.png?branch=master)](https://travis-ci.org/eager7/dogd)
+[![Build Status](http://img.shields.io/travis/eager7/dogd.svg)](https://travis-ci.org/eager7/dogd)
 [![ISC License](http://img.shields.io/badge/license-ISC-blue.svg)](http://copyfree.org)
 [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](http://godoc.org/github.com/eager7/dogd/mempool)
 

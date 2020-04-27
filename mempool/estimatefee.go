@@ -47,7 +47,7 @@ const (
 
 	bytePerKb = 1000
 
-	bchPerSatoshi = 1e-8
+	btcPerSatoshi = 1e-8
 )
 
 var (
@@ -59,34 +59,34 @@ var (
 // SatoshiPerByte is number with units of satoshis per byte.
 type SatoshiPerByte float64
 
-// BchPerKilobyte is number with units of bitcoins per kilobyte.
-type BchPerKilobyte float64
+// BtcPerKilobyte is number with units of bitcoins per kilobyte.
+type BtcPerKilobyte float64
 
-// ToBchPerKb returns a float value that represents the given
+// ToBtcPerKb returns a float value that represents the given
 // SatoshiPerByte converted to satoshis per kb.
-func (rate SatoshiPerByte) ToBchPerKb() BchPerKilobyte {
+func (rate SatoshiPerByte) ToBtcPerKb() BtcPerKilobyte {
 	// If our rate is the error value, return that.
 	if rate == SatoshiPerByte(-1.0) {
 		return -1.0
 	}
 
-	return BchPerKilobyte(float64(rate) * bytePerKb * bchPerSatoshi)
+	return BtcPerKilobyte(float64(rate) * bytePerKb * btcPerSatoshi)
 }
 
 // Fee returns the fee for a transaction of a given size for
 // the given fee rate.
-func (rate SatoshiPerByte) Fee(size uint32) bchutil.Amount {
+func (rate SatoshiPerByte) Fee(size uint32) dogutil.Amount {
 	// If our rate is the error value, return that.
 	if rate == SatoshiPerByte(-1) {
-		return bchutil.Amount(-1)
+		return dogutil.Amount(-1)
 	}
 
-	return bchutil.Amount(float64(rate) * float64(size))
+	return dogutil.Amount(float64(rate) * float64(size))
 }
 
 // NewSatoshiPerByte creates a SatoshiPerByte from an Amount and a
 // size in bytes.
-func NewSatoshiPerByte(fee bchutil.Amount, size uint32) SatoshiPerByte {
+func NewSatoshiPerByte(fee dogutil.Amount, size uint32) SatoshiPerByte {
 	return SatoshiPerByte(float64(fee) / float64(size))
 }
 
@@ -208,11 +208,11 @@ func (ef *FeeEstimator) ObserveTransaction(t *TxDesc) {
 
 	hash := *t.Tx.Hash()
 	if _, ok := ef.observed[hash]; !ok {
-		size := uint32(t.Tx.MsgTx().SerializeSize())
+		size := uint32(GetTxVirtualSize(t.Tx))
 
 		ef.observed[hash] = &observedTransaction{
 			hash:     hash,
-			feeRate:  NewSatoshiPerByte(bchutil.Amount(t.Fee), size),
+			feeRate:  NewSatoshiPerByte(dogutil.Amount(t.Fee), size),
 			observed: t.Height,
 			mined:    mining.UnminedHeight,
 		}
@@ -220,7 +220,7 @@ func (ef *FeeEstimator) ObserveTransaction(t *TxDesc) {
 }
 
 // RegisterBlock informs the fee estimator of a new block to take into account.
-func (ef *FeeEstimator) RegisterBlock(block *bchutil.Block) error {
+func (ef *FeeEstimator) RegisterBlock(block *dogutil.Block) error {
 	ef.mtx.Lock()
 	defer ef.mtx.Unlock()
 
@@ -238,7 +238,7 @@ func (ef *FeeEstimator) RegisterBlock(block *bchutil.Block) error {
 	ef.numBlocksRegistered++
 
 	// Randomly order txs in block.
-	transactions := make(map[*bchutil.Tx]struct{})
+	transactions := make(map[*dogutil.Tx]struct{})
 	for _, t := range block.Transactions() {
 		transactions[t] = struct{}{}
 	}
@@ -487,12 +487,12 @@ func (b *estimateFeeSet) estimateFee(confirmations int) SatoshiPerByte {
 		return 0
 	}
 
-	var min int
+	var min, max int = 0, 0
 	for i := 0; i < confirmations-1; i++ {
 		min += int(b.bin[i])
 	}
 
-	max := min + int(b.bin[confirmations-1]) - 1
+	max = min + int(b.bin[confirmations-1]) - 1
 	if max < min {
 		max = min
 	}
@@ -510,7 +510,7 @@ func (ef *FeeEstimator) newEstimateFeeSet() *estimateFeeSet {
 	set := &estimateFeeSet{}
 
 	capacity := 0
-	for i, b := range &ef.bin {
+	for i, b := range ef.bin {
 		l := len(b)
 		set.bin[i] = uint32(l)
 		capacity += l
@@ -519,7 +519,7 @@ func (ef *FeeEstimator) newEstimateFeeSet() *estimateFeeSet {
 	set.feeRate = make([]SatoshiPerByte, capacity)
 
 	i := 0
-	for _, b := range &ef.bin {
+	for _, b := range ef.bin {
 		for _, o := range b {
 			set.feeRate[i] = o.feeRate
 			i++
@@ -546,7 +546,7 @@ func (ef *FeeEstimator) estimates() []SatoshiPerByte {
 
 // EstimateFee estimates the fee per byte to have a tx confirmed a given
 // number of blocks from now.
-func (ef *FeeEstimator) EstimateFee(numBlocks uint32) (BchPerKilobyte, error) {
+func (ef *FeeEstimator) EstimateFee(numBlocks uint32) (BtcPerKilobyte, error) {
 	ef.mtx.Lock()
 	defer ef.mtx.Unlock()
 
@@ -571,7 +571,7 @@ func (ef *FeeEstimator) EstimateFee(numBlocks uint32) (BchPerKilobyte, error) {
 		ef.cached = ef.estimates()
 	}
 
-	return ef.cached[int(numBlocks)-1].ToBchPerKb(), nil
+	return ef.cached[int(numBlocks)-1].ToBtcPerKb(), nil
 }
 
 // In case the format for the serialized version of the FeeEstimator changes,
@@ -656,7 +656,7 @@ func (ef *FeeEstimator) Save() FeeEstimatorState {
 	}
 
 	// Save all the right bins.
-	for _, list := range &ef.bin {
+	for _, list := range ef.bin {
 
 		binary.Write(w, binary.BigEndian, uint32(len(list)))
 

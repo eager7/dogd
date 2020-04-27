@@ -13,19 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/btcsuite/go-socks/socks"
 	"github.com/eager7/dogd/chaincfg"
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/peer"
 	"github.com/eager7/dogd/wire"
+	"github.com/btcsuite/go-socks/socks"
 )
-
-// fixedExcessiveBlockSize should not be the default -we want to ensure it will work in all cases
-const fixedExcessiveBlockSize uint32 = 42111000
-
-func init() {
-	wire.SetLimits(fixedExcessiveBlockSize)
-}
 
 // conn mocks a network connection by implementing the net.Conn interface.  It
 // is used to test peer connection without actually opening a network
@@ -116,6 +109,7 @@ type peerStats struct {
 	wantTimeOffset      int64
 	wantBytesSent       uint64
 	wantBytesReceived   uint64
+	wantWitnessEnabled  bool
 }
 
 // testPeer tests the given peer's flags and stats
@@ -193,12 +187,14 @@ func testPeer(t *testing.T, p *peer.Peer, s peerStats) {
 		return
 	}
 
-	// These tests are inherently racy. Do range tests on time
-	// based attributes.
-	lastSend := p.LastSend()
-	lastRecv := p.LastRecv()
+	if p.IsWitnessEnabled() != s.wantWitnessEnabled {
+		t.Errorf("testPeer: wrong WitnessEnabled - got %v, want %v",
+			p.IsWitnessEnabled(), s.wantWitnessEnabled)
+		return
+	}
 
 	stats := p.StatsSnapshot()
+
 	if p.ID() != stats.ID {
 		t.Errorf("testPeer: wrong ID - got %v, want %v", p.ID(), stats.ID)
 		return
@@ -209,12 +205,12 @@ func testPeer(t *testing.T, p *peer.Peer, s peerStats) {
 		return
 	}
 
-	if !stats.LastSend.Equal(p.LastSend()) && (stats.LastSend.Before(lastSend) || stats.LastSend.After(p.LastSend())) {
+	if p.LastSend() != stats.LastSend {
 		t.Errorf("testPeer: wrong LastSend - got %v, want %v", p.LastSend(), stats.LastSend)
 		return
 	}
 
-	if !stats.LastRecv.Equal(p.LastRecv()) && (stats.LastRecv.Before(lastRecv) || stats.LastRecv.After(p.LastRecv())) {
+	if p.LastRecv() != stats.LastRecv {
 		t.Errorf("testPeer: wrong LastRecv - got %v, want %v", p.LastRecv(), stats.LastRecv)
 		return
 	}
@@ -235,28 +231,26 @@ func TestPeerConnection(t *testing.T) {
 				}
 			},
 		},
-		UserAgentName:          "peer",
-		UserAgentVersion:       "1.0",
-		UserAgentComments:      []string{"comment"},
-		ChainParams:            &chaincfg.MainNetParams,
-		ProtocolVersion:        wire.RejectVersion, // Configure with older version
-		Services:               0,
-		TrickleInterval:        time.Second * 10,
-		TstAllowSelfConnection: true,
+		UserAgentName:     "peer",
+		UserAgentVersion:  "1.0",
+		UserAgentComments: []string{"comment"},
+		ChainParams:       &chaincfg.MainNetParams,
+		ProtocolVersion:   wire.RejectVersion, // Configure with older version
+		Services:          0,
+		TrickleInterval:   time.Second * 10,
 	}
 	peer2Cfg := &peer.Config{
-		Listeners:              peer1Cfg.Listeners,
-		UserAgentName:          "peer",
-		UserAgentVersion:       "1.0",
-		UserAgentComments:      []string{"comment"},
-		ChainParams:            &chaincfg.MainNetParams,
-		Services:               wire.SFNodeNetwork,
-		TrickleInterval:        time.Second * 10,
-		TstAllowSelfConnection: true,
+		Listeners:         peer1Cfg.Listeners,
+		UserAgentName:     "peer",
+		UserAgentVersion:  "1.0",
+		UserAgentComments: []string{"comment"},
+		ChainParams:       &chaincfg.MainNetParams,
+		Services:          wire.SFNodeNetwork | wire.SFNodeWitness,
+		TrickleInterval:   time.Second * 10,
 	}
 
 	wantStats1 := peerStats{
-		wantUserAgent:       "peer:1.0(comment)/",
+		wantUserAgent:       wire.DefaultUserAgent + "peer:1.0(comment)/",
 		wantServices:        0,
 		wantProtocolVersion: wire.RejectVersion,
 		wantConnected:       true,
@@ -266,12 +260,13 @@ func TestPeerConnection(t *testing.T) {
 		wantLastPingNonce:   uint64(0),
 		wantLastPingMicros:  int64(0),
 		wantTimeOffset:      int64(0),
-		wantBytesSent:       152, // 128 version + 24 verack
-		wantBytesReceived:   152,
+		wantBytesSent:       167, // 143 version + 24 verack
+		wantBytesReceived:   167,
+		wantWitnessEnabled:  false,
 	}
 	wantStats2 := peerStats{
-		wantUserAgent:       "peer:1.0(comment)/",
-		wantServices:        wire.SFNodeNetwork,
+		wantUserAgent:       wire.DefaultUserAgent + "peer:1.0(comment)/",
+		wantServices:        wire.SFNodeNetwork | wire.SFNodeWitness,
 		wantProtocolVersion: wire.RejectVersion,
 		wantConnected:       true,
 		wantVersionKnown:    true,
@@ -280,8 +275,9 @@ func TestPeerConnection(t *testing.T) {
 		wantLastPingNonce:   uint64(0),
 		wantLastPingMicros:  int64(0),
 		wantTimeOffset:      int64(0),
-		wantBytesSent:       152, // 128 version + 24 verack
-		wantBytesReceived:   152,
+		wantBytesSent:       167, // 143 version + 24 verack
+		wantBytesReceived:   167,
+		wantWitnessEnabled:  true,
 	}
 
 	tests := []struct {
@@ -376,6 +372,9 @@ func TestPeerListeners(t *testing.T) {
 			OnPong: func(p *peer.Peer, msg *wire.MsgPong) {
 				ok <- msg
 			},
+			OnAlert: func(p *peer.Peer, msg *wire.MsgAlert) {
+				ok <- msg
+			},
 			OnMemPool: func(p *peer.Peer, msg *wire.MsgMemPool) {
 				ok <- msg
 			},
@@ -447,13 +446,12 @@ func TestPeerListeners(t *testing.T) {
 				ok <- msg
 			},
 		},
-		UserAgentName:          "peer",
-		UserAgentVersion:       "1.0",
-		UserAgentComments:      []string{"comment"},
-		ChainParams:            &chaincfg.MainNetParams,
-		Services:               wire.SFNodeBloom,
-		TrickleInterval:        time.Second * 10,
-		TstAllowSelfConnection: true,
+		UserAgentName:     "peer",
+		UserAgentVersion:  "1.0",
+		UserAgentComments: []string{"comment"},
+		ChainParams:       &chaincfg.MainNetParams,
+		Services:          wire.SFNodeBloom,
+		TrickleInterval:   time.Second * 10,
 	}
 	inConn, outConn := pipe(
 		&conn{raddr: "10.0.0.1:8333"},
@@ -502,6 +500,10 @@ func TestPeerListeners(t *testing.T) {
 		{
 			"OnPong",
 			wire.NewMsgPong(42),
+		},
+		{
+			"OnAlert",
+			wire.NewMsgAlert([]byte("payload"), []byte("signature")),
 		},
 		{
 			"OnMemPool",
@@ -615,13 +617,12 @@ func TestOutboundPeer(t *testing.T) {
 		NewestBlock: func() (*chainhash.Hash, int32, error) {
 			return nil, 0, errors.New("newest block not found")
 		},
-		UserAgentName:          "peer",
-		UserAgentVersion:       "1.0",
-		UserAgentComments:      []string{"comment"},
-		ChainParams:            &chaincfg.MainNetParams,
-		Services:               0,
-		TrickleInterval:        time.Second * 10,
-		TstAllowSelfConnection: true,
+		UserAgentName:     "peer",
+		UserAgentVersion:  "1.0",
+		UserAgentComments: []string{"comment"},
+		ChainParams:       &chaincfg.MainNetParams,
+		Services:          0,
+		TrickleInterval:   time.Second * 10,
 	}
 
 	r, w := io.Pipe()
@@ -757,13 +758,12 @@ func TestOutboundPeer(t *testing.T) {
 // version.
 func TestUnsupportedVersionPeer(t *testing.T) {
 	peerCfg := &peer.Config{
-		UserAgentName:          "peer",
-		UserAgentVersion:       "1.0",
-		UserAgentComments:      []string{"comment"},
-		ChainParams:            &chaincfg.MainNetParams,
-		Services:               0,
-		TrickleInterval:        time.Second * 10,
-		TstAllowSelfConnection: true,
+		UserAgentName:     "peer",
+		UserAgentVersion:  "1.0",
+		UserAgentComments: []string{"comment"},
+		ChainParams:       &chaincfg.MainNetParams,
+		Services:          0,
+		TrickleInterval:   time.Second * 10,
 	}
 
 	localNA := wire.NewNetAddressIPPort(
@@ -870,11 +870,10 @@ func TestDuplicateVersionMsg(t *testing.T) {
 				verack <- struct{}{}
 			},
 		},
-		UserAgentName:          "peer",
-		UserAgentVersion:       "1.0",
-		ChainParams:            &chaincfg.MainNetParams,
-		Services:               0,
-		TstAllowSelfConnection: true,
+		UserAgentName:    "peer",
+		UserAgentVersion: "1.0",
+		ChainParams:      &chaincfg.MainNetParams,
+		Services:         0,
 	}
 	inConn, outConn := pipe(
 		&conn{laddr: "10.0.0.1:9108", raddr: "10.0.0.2:9108"},
@@ -916,4 +915,9 @@ func TestDuplicateVersionMsg(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("peer did not disconnect")
 	}
+}
+
+func init() {
+	// Allow self connection when running the tests.
+	peer.TstAllowSelfConns()
 }

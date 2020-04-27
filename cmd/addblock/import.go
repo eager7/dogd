@@ -72,10 +72,10 @@ func (bi *blockImporter) readBlock() ([]byte, error) {
 	if err := binary.Read(bi.r, binary.LittleEndian, &blockLen); err != nil {
 		return nil, err
 	}
-	if blockLen > wire.MaxBlockPayload() {
+	if blockLen > wire.MaxBlockPayload {
 		return nil, fmt.Errorf("block payload of %d bytes is larger "+
 			"than the max allowed %d bytes", blockLen,
-			wire.MaxBlockPayload())
+			wire.MaxBlockPayload)
 	}
 
 	serializedBlock := make([]byte, blockLen)
@@ -94,7 +94,7 @@ func (bi *blockImporter) readBlock() ([]byte, error) {
 // with any potential errors.
 func (bi *blockImporter) processBlock(serializedBlock []byte) (bool, error) {
 	// Deserialize the block which includes checks for malformed blocks.
-	block, err := bchutil.NewBlockFromBytes(serializedBlock)
+	block, err := dogutil.NewBlockFromBytes(serializedBlock)
 	if err != nil {
 		return false, err
 	}
@@ -156,7 +156,7 @@ out:
 		// notify the status handler with the error and bail.
 		serializedBlock, err := bi.readBlock()
 		if err != nil {
-			bi.errChan <- fmt.Errorf("error reading from input "+
+			bi.errChan <- fmt.Errorf("Error reading from input "+
 				"file: %v", err.Error())
 			break out
 		}
@@ -287,14 +287,6 @@ func (bi *blockImporter) Import() chan *importResults {
 	// the status handler when done.
 	go func() {
 		bi.wg.Wait()
-		// Flush the changes made to the blockchain.
-		log.Info("Flushing blockchain caches to the disk...")
-		if err := bi.chain.FlushCachedState(blockchain.FlushRequired); err != nil {
-			log.Errorf("Error while flushing the blockchain state: %v", err)
-			bi.errChan <- err
-			return
-		}
-		log.Info("Done flushing blockchain caches to disk")
 		bi.doneChan <- true
 	}()
 
@@ -343,9 +335,6 @@ func newBlockImporter(db database.DB, r io.ReadSeeker) (*blockImporter, error) {
 		ChainParams:  activeNetParams,
 		TimeSource:   blockchain.NewMedianTime(),
 		IndexManager: indexManager,
-		// No nice way to get the main configuration here.
-		// For now just accept up to the default.
-		ExcessiveBlockSize: 32000000,
 	})
 	if err != nil {
 		return nil, err

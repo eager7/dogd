@@ -21,7 +21,7 @@ import (
 // their documentation for how the flags modify their behavior.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) maybeAcceptBlock(block *bchutil.Block, flags BehaviorFlags) (bool, error) {
+func (b *BlockChain) maybeAcceptBlock(block *dogutil.Block, flags BehaviorFlags) (bool, error) {
 	// The height of this block is one more than the referenced previous
 	// block.
 	prevHash := &block.MsgBlock().Header.PrevBlock
@@ -84,11 +84,9 @@ func (b *BlockChain) maybeAcceptBlock(block *bchutil.Block, flags BehaviorFlags)
 	// Notify the caller that the new block was accepted into the block
 	// chain.  The caller would typically want to react by relaying the
 	// inventory to other peers.
-	b.notificationLock.Lock()
 	b.chainLock.Unlock()
 	b.sendNotification(NTBlockAccepted, block)
 	b.chainLock.Lock()
-	b.notificationLock.Unlock()
 
 	return isMainChain, nil
 }

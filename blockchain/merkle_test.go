@@ -5,14 +5,15 @@
 package blockchain
 
 import (
-	"github.com/eager7/dogutil"
 	"testing"
+
+	"github.com/eager7/dogutil"
 )
 
 // TestMerkle tests the BuildMerkleTreeStore API.
 func TestMerkle(t *testing.T) {
-	block := bchutil.NewBlock(&Block100000)
-	merkles := BuildMerkleTreeStore(block.Transactions())
+	block := dogutil.NewBlock(&Block100000)
+	merkles := BuildMerkleTreeStore(block.Transactions(), false)
 	calculatedMerkleRoot := merkles[len(merkles)-1]
 	wantMerkle := &Block100000.Header.MerkleRoot
 	if !wantMerkle.IsEqual(calculatedMerkleRoot) {

@@ -1,145 +1,130 @@
-bchd
+btcd
 ====
+
 [![Build Status](https://travis-ci.org/eager7/dogd.png?branch=master)](https://travis-ci.org/eager7/dogd)
-[![Go Report Card](https://goreportcard.com/badge/github.com/eager7/dogd)](https://goreportcard.com/report/github.com/eager7/dogd)
 [![ISC License](http://img.shields.io/badge/license-ISC-blue.svg)](http://copyfree.org)
 [![GoDoc](https://img.shields.io/badge/godoc-reference-blue.svg)](http://godoc.org/github.com/eager7/dogd)
 
-bchd is an alternative full node bitcoin cash implementation written in Go (golang).
+btcd is an alternative full node bitcoin implementation written in Go (golang).
 
-This project is a port of the [btcd](https://github.com/btcsuite/btcd) codebase to Bitcoin Cash. It provides a high powered
-and reliable blockchain server which makes it a suitable backend to serve blockchain data to lite clients and block explorers
-or to power your local wallet.
+This project is currently under active development and is in a Beta state.  It
+is extremely stable and has been in production use since October 2013.
 
-bchd does not include any wallet functionality by design as it makes the codebase more modular and easy to maintain. 
-The [bchwallet](https://github.com/gcash/bchwallet) is a separate application that provides a secure Bitcoin Cash wallet 
-that communicates with your running bchd instance via the API.
+It properly downloads, validates, and serves the block chain using the exact
+rules (including consensus bugs) for block acceptance as Bitcoin Core.  We have
+taken great care to avoid btcd causing a fork to the block chain.  It includes a
+full block validation testing framework which contains all of the 'official'
+block acceptance tests (and some additional ones) that is run on every pull
+request to help ensure it properly follows consensus.  Also, it passes all of
+the JSON test data in the Bitcoin Core code.
 
-## Table of Contents
+It also properly relays newly mined blocks, maintains a transaction pool, and
+relays individual transactions that have not yet made it into a block.  It
+ensures all individual transactions admitted to the pool follow the rules
+required by the block chain and also includes more strict checks which filter
+transactions based on miner requirements ("standard" transactions).
 
-- [Requirements](#requirements)
-- [Install](#install)
-  - [Install prebuilt packages](#install-pre-built-packages)
-  - [Build from Source](#build-from-source)
-- [Getting Started](#getting-started)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
+One key difference between btcd and Bitcoin Core is that btcd does *NOT* include
+wallet functionality and this was a very intentional design decision.  See the
+blog entry [here](https://blog.conformal.com/btcd-not-your-moms-bitcoin-daemon)
+for more details.  This means you can't actually make or receive payments
+directly with btcd.  That functionality is provided by the
+[btcwallet](https://github.com/btcsuite/btcwallet) and
+[Paymetheus](https://github.com/btcsuite/Paymetheus) (Windows-only) projects
+which are both under active development.
 
 ## Requirements
 
-[Go](http://golang.org) 1.9 or newer.
+[Go](http://golang.org) 1.12 or newer.
 
-## Install
+## Installation
 
-### Install Pre-built Packages
+#### Windows - MSI Available
 
-The easiest way to run the server is to download a pre-built binary. You can find binaries of our latest release for each operating system at the [releases page](https://github.com/eager7/dogd/releases).
+https://github.com/eager7/dogd/releases
 
-### Build from Source
-
-If you prefer to install from source do the following:
+#### Linux/BSD/MacOSX/POSIX - Build from Source
 
 - Install Go according to the installation instructions here:
   http://golang.org/doc/install
 
-- Run the following commands to obtain bchd, all dependencies, and install it:
+- Ensure Go was installed properly and is a supported version:
 
 ```bash
-go get github.com/eager7/dogd
+$ go version
+$ go env GOROOT GOPATH
 ```
 
-This will download the source code into your GOPATH and compile `bchd` and install it in your path.
+NOTE: The `GOROOT` and `GOPATH` above must not be the same path.  It is
+recommended that `GOPATH` is set to a directory in your home directory such as
+`~/goprojects` to avoid write permission issues.  It is also recommended to add
+`$GOPATH/bin` to your `PATH` at this point.
 
-For developers if you wish to place the working directory outside your GOPATH you can do so with Go >=1.12.x as follows:
+- Run the following commands to obtain btcd, all dependencies, and install it:
+
 ```bash
-mkdir workspace
-cd workspace
-git clone https://github.com/eager7/dogd.git
-cd bchd
-go install (or build or run, etc)
+$ cd $GOPATH/src/github.com/eager7/dogd
+$ GO111MODULE=on go install -v . ./cmd/...
 ```
-Dependencies will be automatically installed to `$GOPATH/pkg/mod`.
 
-If you are a bchd contributor and would like to change the default config file (`bchd.conf`), make any changes to `sample-bchd.conf` and then run the following commands:
+- btcd (and utilities) will now be installed in ```$GOPATH/bin```.  If you did
+  not already add the bin directory to your system path during Go installation,
+  we recommend you do so now.
+
+## Updating
+
+#### Windows
+
+Install a newer MSI
+
+#### Linux/BSD/MacOSX/POSIX - Build from Source
+
+- Run the following commands to update btcd, all dependencies, and install it:
 
 ```bash
-go-bindata sample-bchd.conf  # requires github.com/go-bindata/go-bindata/
-gofmt -s -w bindata.go
+$ cd $GOPATH/src/github.com/eager7/dogd
+$ git pull
+$ GO111MODULE=on go install -v . ./cmd/...
 ```
 
 ## Getting Started
 
-To start bchd with default options just run:
+btcd has several configuration options available to tweak how it runs, but all
+of the basic operations described in the intro section work with zero
+configuration.
+
+#### Windows (Installed from MSI)
+
+Launch btcd from your Start menu.
+
+#### Linux/BSD/POSIX/Source
 
 ```bash
-./bchd
+$ ./btcd
 ```
 
-You'll find a large number of runtime options with the help flag. All of them can also be set in a config file.
-See the [sample config file](https://github.com/eager7/dogd/blob/master/sample-bchd.conf) for an example of how to use it.
+## IRC
 
-```bash
-./bchd --help
-```
+- irc.freenode.net
+- channel #btcd
+- [webchat](https://webchat.freenode.net/?channels=btcd)
 
-You can use the common json RPC interface through the `bchctl` command:
+## Issue Tracker
 
-```bash
-./bchctl --help
-
-./bchctl --listcommands
-```
-
-Bchd separates the node and the wallet. Commands for the wallet will work when you are also running
-[bchwallet](https://github.com/gcash/bchwallet):
-
-```bash
-./bchctl -u username -P password --wallet getnewaddress
-```
-
-## Docker
-
-Building and running `bchd` in docker is quite painless. To build the image:
-
-```
-docker build . -t bchd
-```
-
-To run the image:
-
-```
-docker run bchd
-```
-
-To run `bchctl` and connect to your `bchd` instance:
-
-```
-# Find the running bchd container.
-docker ps
-
-# Exec bchctl.
-docker exec <container> bchctl <command>
-```
+The [integrated github issue tracker](https://github.com/eager7/dogd/issues)
+is used for this project.
 
 ## Documentation
 
 The documentation is a work-in-progress.  It is located in the [docs](https://github.com/eager7/dogd/tree/master/docs) folder.
 
-## Contributing
+## Release Verification
 
-Contributions are definitely welcome! Please read the contributing [guidelines](https://github.com/eager7/dogd/blob/master/docs/code_contribution_guidelines.md) before starting.
-
-## Security Disclosures
-
-To report security issues please contact:
-
-Chris Pacia (ctpacia@gmail.com) - GPG Fingerprint: 0150 2502 DD3A 928D CE52 8CB9 B895 6DBF EE7C 105C
-
-or
-
-Josh Ellithorpe (quest@mac.com) - GPG Fingerprint: B6DE 3514 E07E 30BB 5F40  8D74 E49B 7E00 0022 8DDD 
+Please see our [documentation on the current build/verification
+process](https://github.com/eager7/dogd/tree/master/release) for all our
+releases for information on how to verify the integrity of published releases
+using our reproducible build system.
 
 ## License
 
-bchd is licensed under the [copyfree](http://copyfree.org) ISC License.
+btcd is licensed under the [copyfree](http://copyfree.org) ISC License.

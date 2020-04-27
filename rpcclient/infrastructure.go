@@ -19,14 +19,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/btcsuite/go-socks/socks"
-	"github.com/btcsuite/websocket"
 	"github.com/eager7/dogd/btcjson"
 	"github.com/eager7/dogd/chaincfg"
+	"github.com/btcsuite/go-socks/socks"
+	"github.com/btcsuite/websocket"
 )
 
 var (
@@ -104,6 +105,22 @@ type jsonRequest struct {
 	responseChan   chan *response
 }
 
+// BackendVersion represents the version of the backend the client is currently
+// connected to.
+type BackendVersion uint8
+
+const (
+	// BitcoindPre19 represents a bitcoind version before 0.19.0.
+	BitcoindPre19 BackendVersion = iota
+
+	// BitcoindPost19 represents a bitcoind version equal to or greater than
+	// 0.19.0.
+	BitcoindPost19
+
+	// Btcd represents a catch-all btcd version.
+	Btcd
+)
+
 // Client represents a Bitcoin RPC client which allows easy access to the
 // various RPC methods available on a Bitcoin RPC server.  Each of the wrapper
 // functions handle the details of converting the passed and return types to and
@@ -122,17 +139,22 @@ type Client struct {
 	// config holds the connection configuration assoiated with this client.
 	config *ConnConfig
 
-	// wsConn is the underlying websocket connection when not in HTTP POST
-	// mode.
-	wsConn *websocket.Conn
-
 	// chainParams holds the params for the chain that this client is using,
 	// and is used for many wallet methods.
 	chainParams *chaincfg.Params
 
+	// wsConn is the underlying websocket connection when not in HTTP POST
+	// mode.
+	wsConn *websocket.Conn
+
 	// httpClient is the underlying HTTP client to use when running in HTTP
 	// POST mode.
 	httpClient *http.Client
+
+	// backendVersion is the version of the backend the client is currently
+	// connected to. This should be retrieved through GetVersion.
+	backendVersionMu sync.Mutex
+	backendVersion   *BackendVersion
 
 	// mtx is a mutex to protect access to connection related fields.
 	mtx sync.Mutex
@@ -266,31 +288,29 @@ func (c *Client) trackRegisteredNtfns(cmd interface{}) {
 	}
 }
 
-type (
-	// inMessage is the first type that an incoming message is unmarshaled
-	// into. It supports both requests (for notification support) and
-	// responses.  The partially-unmarshaled message is a notification if
-	// the embedded ID (from the response) is nil.  Otherwise, it is a
-	// response.
-	inMessage struct {
-		ID *float64 `json:"id"`
-		*rawNotification
-		*rawResponse
-	}
+// inMessage is the first type that an incoming message is unmarshaled
+// into. It supports both requests (for notification support) and
+// responses.  The partially-unmarshaled message is a notification if
+// the embedded ID (from the response) is nil.  Otherwise, it is a
+// response.
+type inMessage struct {
+	ID *float64 `json:"id"`
+	*rawNotification
+	*rawResponse
+}
 
-	// rawNotification is a partially-unmarshaled JSON-RPC notification.
-	rawNotification struct {
-		Method string            `json:"method"`
-		Params []json.RawMessage `json:"params"`
-	}
+// rawNotification is a partially-unmarshaled JSON-RPC notification.
+type rawNotification struct {
+	Method string            `json:"method"`
+	Params []json.RawMessage `json:"params"`
+}
 
-	// rawResponse is a partially-unmarshaled JSON-RPC response.  For this
-	// to be valid (according to JSON-RPC 1.0 spec), ID may not be nil.
-	rawResponse struct {
-		Result json.RawMessage   `json:"result"`
-		Error  *btcjson.RPCError `json:"error"`
-	}
-)
+// rawResponse is a partially-unmarshaled JSON-RPC response.  For this
+// to be valid (according to JSON-RPC 1.0 spec), ID may not be nil.
+type rawResponse struct {
+	Result json.RawMessage   `json:"result"`
+	Error  *btcjson.RPCError `json:"error"`
+}
 
 // response is the raw bytes of a JSON-RPC result, or the error if the response
 // error object was non-null.
@@ -664,6 +684,12 @@ out:
 			log.Infof("Reestablished connection to RPC server %s",
 				c.config.Host)
 
+			// Reset the version in case the backend was
+			// disconnected due to an upgrade.
+			c.backendVersionMu.Lock()
+			c.backendVersion = nil
+			c.backendVersionMu.Unlock()
+
 			// Reset the connection state and signal the reconnect
 			// has happened.
 			c.wsConn = wsConn
@@ -878,7 +904,7 @@ func (c *Client) sendCmd(cmd interface{}) chan *response {
 
 	// Marshal the command.
 	id := c.NextID()
-	marshalledJSON, err := btcjson.MarshalCmd("1.0", id, cmd)
+	marshalledJSON, err := btcjson.MarshalCmd(id, cmd)
 	if err != nil {
 		return newFutureError(err)
 	}
@@ -1070,7 +1096,9 @@ type ConnConfig struct {
 	// Pass is the passphrase to use to authenticate to the RPC server.
 	Pass string
 
-	// Params is the string representing the network that the server is running.
+	// Params is the string representing the network that the server
+	// is running. If there is no parameter set in the config, then
+	// mainnet will be used by default.
 	Params string
 
 	// DisableTLS specifies whether transport layer security should be
@@ -1356,4 +1384,85 @@ func (c *Client) Connect(tries int) error {
 
 	// All connection attempts failed, so return the last error.
 	return err
+}
+
+const (
+	// bitcoind19Str is the string representation of bitcoind v0.19.0.
+	bitcoind19Str = "0.19.0"
+
+	// bitcoindVersionPrefix specifies the prefix included in every bitcoind
+	// version exposed through GetNetworkInfo.
+	bitcoindVersionPrefix = "/Satoshi:"
+
+	// bitcoindVersionSuffix specifies the suffix included in every bitcoind
+	// version exposed through GetNetworkInfo.
+	bitcoindVersionSuffix = "/"
+)
+
+// parseBitcoindVersion parses the bitcoind version from its string
+// representation.
+func parseBitcoindVersion(version string) BackendVersion {
+	// Trim the version of its prefix and suffix to determine the
+	// appropriate version number.
+	version = strings.TrimPrefix(
+		strings.TrimSuffix(version, bitcoindVersionSuffix),
+		bitcoindVersionPrefix,
+	)
+	switch {
+	case version < bitcoind19Str:
+		return BitcoindPre19
+	default:
+		return BitcoindPost19
+	}
+}
+
+// BackendVersion retrieves the version of the backend the client is currently
+// connected to.
+func (c *Client) BackendVersion() (BackendVersion, error) {
+	c.backendVersionMu.Lock()
+	defer c.backendVersionMu.Unlock()
+
+	if c.backendVersion != nil {
+		return *c.backendVersion, nil
+	}
+
+	// We'll start by calling GetInfo. This method doesn't exist for
+	// bitcoind nodes as of v0.16.0, so we'll assume the client is connected
+	// to a btcd backend if it does exist.
+	info, err := c.GetInfo()
+
+	switch err := err.(type) {
+	// Parse the btcd version and cache it.
+	case nil:
+		log.Debugf("Detected btcd version: %v", info.Version)
+		version := Btcd
+		c.backendVersion = &version
+		return *c.backendVersion, nil
+
+	// Inspect the RPC error to ensure the method was not found, otherwise
+	// we actually ran into an error.
+	case *btcjson.RPCError:
+		if err.Code != btcjson.ErrRPCMethodNotFound.Code {
+			return 0, fmt.Errorf("unable to detect btcd version: "+
+				"%v", err)
+		}
+
+	default:
+		return 0, fmt.Errorf("unable to detect btcd version: %v", err)
+	}
+
+	// Since the GetInfo method was not found, we assume the client is
+	// connected to a bitcoind backend, which exposes its version through
+	// GetNetworkInfo.
+	networkInfo, err := c.GetNetworkInfo()
+	if err != nil {
+		return 0, fmt.Errorf("unable to detect bitcoind version: %v", err)
+	}
+
+	// Parse the bitcoind version and cache it.
+	log.Debugf("Detected bitcoind version: %v", networkInfo.SubVersion)
+	version := parseBitcoindVersion(networkInfo.SubVersion)
+	c.backendVersion = &version
+
+	return *c.backendVersion, nil
 }

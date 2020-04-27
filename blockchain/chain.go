@@ -6,10 +6,8 @@
 package blockchain
 
 import (
-	"bytes"
 	"container/list"
 	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -47,7 +45,7 @@ type BlockLocator []*chainhash.Hash
 // is a normal block plus an expiration time to prevent caching the orphan
 // forever.
 type orphanBlock struct {
-	block      *bchutil.Block
+	block      *dogutil.Block
 	expiration time.Time
 }
 
@@ -61,47 +59,31 @@ type orphanBlock struct {
 // However, the returned snapshot must be treated as immutable since it is
 // shared by all callers.
 type BestState struct {
-	Hash       chainhash.Hash // The hash of the block.
-	Height     int32          // The height of the block.
-	Bits       uint32         // The difficulty bits of the block.
-	BlockSize  uint64         // The size of the block.
-	NumTxns    uint64         // The number of txns in the block.
-	TotalTxns  uint64         // The total number of txns in the chain.
-	MedianTime time.Time      // Median time as per CalcPastMedianTime.
+	Hash        chainhash.Hash // The hash of the block.
+	Height      int32          // The height of the block.
+	Bits        uint32         // The difficulty bits of the block.
+	BlockSize   uint64         // The size of the block.
+	BlockWeight uint64         // The weight of the block.
+	NumTxns     uint64         // The number of txns in the block.
+	TotalTxns   uint64         // The total number of txns in the chain.
+	MedianTime  time.Time      // Median time as per CalcPastMedianTime.
 }
 
 // newBestState returns a new best stats instance for the given parameters.
-func newBestState(node *blockNode, blockSize, numTxns,
+func newBestState(node *blockNode, blockSize, blockWeight, numTxns,
 	totalTxns uint64, medianTime time.Time) *BestState {
 
 	return &BestState{
-		Hash:       node.hash,
-		Height:     node.height,
-		Bits:       node.bits,
-		BlockSize:  blockSize,
-		NumTxns:    numTxns,
-		TotalTxns:  totalTxns,
-		MedianTime: medianTime,
+		Hash:        node.hash,
+		Height:      node.height,
+		Bits:        node.bits,
+		BlockSize:   blockSize,
+		BlockWeight: blockWeight,
+		NumTxns:     numTxns,
+		TotalTxns:   totalTxns,
+		MedianTime:  medianTime,
 	}
 }
-
-// FlushMode is used to indicate the different urgency types for a flush.
-type FlushMode uint8
-
-const (
-	// FlushRequired is the flush mode that means a flush must be performed
-	// regardless of the cache state.  For example right before shutting down.
-	FlushRequired FlushMode = iota
-	// FlushPeriodic is the flush mode that means a flush can be performed
-	// when it would be almost needed.  This is used to periodically signal when
-	// no I/O heavy operations are expected soon, so there is time to flush.
-	FlushPeriodic
-	// FlushIfNeeded is the flush mode that means a flush must be performed only
-	// if the cache is exceeding a safety threshold very close to its maximum
-	// size.  This is used mostly internally in between operations that can
-	// increase the cache size.
-	FlushIfNeeded
-)
 
 // BlockChain provides functions for working with the bitcoin block chain.
 // It includes functionality such as rejecting duplicate blocks, ensuring blocks
@@ -119,7 +101,6 @@ type BlockChain struct {
 	sigCache            *txscript.SigCache
 	indexManager        IndexManager
 	hashCache           *txscript.HashCache
-	excessiveBlockSize  uint32
 
 	// The following fields are calculated based upon the provided chain
 	// parameters.  They are also set when the instance is created and
@@ -145,14 +126,8 @@ type BlockChain struct {
 	index     *blockIndex
 	bestChain *chainView
 
-	// The utxoCache holds a cached view of the UTXO state of the chain.
-	//
-	// It has its own lock, however it is often also protected by the chain lock
-	// to help prevent logic races when blocks are being processed.
-	utxoCache *utxoCache
-
-	// orphanLock protects the fields related to handling of orphan blocks.
-	// They are protected by a combination of the chain lock and the orphan lock.
+	// These fields are related to handling of orphan blocks.  They are
+	// protected by a combination of the chain lock and the orphan lock.
 	orphanLock   sync.RWMutex
 	orphans      map[chainhash.Hash]*orphanBlock
 	prevOrphans  map[chainhash.Hash][]*orphanBlock
@@ -176,10 +151,6 @@ type BlockChain struct {
 	// chain state can be quickly reconstructed on load.
 	stateLock     sync.RWMutex
 	stateSnapshot *BestState
-
-	// notificationLock is used to make sure notifications are sent
-	// serially and protect against double mutex unlock panics during reorg.
-	notificationLock sync.Mutex
 
 	// The following caches are used to efficiently keep track of the
 	// current deployment threshold state of each rule change deployment.
@@ -213,22 +184,6 @@ type BlockChain struct {
 	// certain blockchain events.
 	notificationsLock sync.RWMutex
 	notifications     []NotificationCallback
-
-	// The following fields are set if the blockchain is configured to prune
-	// historical blocks.
-	pruneMode  bool
-	pruneDepth uint32
-
-	// isPruned is set to true if the chain was ever run in prune mode or fast
-	// sync mode.
-	isPruned bool
-
-	// fastSyncDataDir is the directory used to download the UTXO set.
-	fastSyncDataDir string
-
-	// fastSyncDone chan is used to signal that the UTXO set download has
-	// finished.
-	fastSyncDone chan struct{}
 }
 
 // HaveBlock returns whether or not the chain instance has the block represented
@@ -262,80 +217,6 @@ func (b *BlockChain) IsKnownOrphan(hash *chainhash.Hash) bool {
 	b.orphanLock.RUnlock()
 
 	return exists
-}
-
-// UtxoCacheFlushInProgress returns whether or not we are currently flushing the
-// utxo cache to disk.
-func (b *BlockChain) UtxoCacheFlushInProgress() bool {
-	return b.utxoCache.flushInProgress
-}
-
-// PruneMode returns whether or not the blockchain is running in prune mode.
-func (b *BlockChain) PruneMode() bool {
-	return b.pruneMode
-}
-
-// IsPruned returns true if the chain was ever run in prune mode or fastsync mode.
-func (b *BlockChain) IsPruned() bool {
-	return b.isPruned
-}
-
-// FastSyncDoneChan returns a channel which signals that the fastsync UTXO download
-// has finished.
-func (b *BlockChain) FastSyncDoneChan() <-chan struct{} {
-	return b.fastSyncDone
-}
-
-// GetWarnings returns a bool for whether unknownRules and unknownVersions
-// has been warned.
-func (b *BlockChain) GetWarnings() (bool, bool) {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
-
-	return b.unknownRulesWarned, b.unknownVersionsWarned
-}
-
-// AddHeader will add a new header to the tip of the index. This is primarily used
-// when syncing headers in fastsync mode.
-//
-// This function is safe for concurrent access.
-func (b *BlockChain) AddHeader(header *wire.BlockHeader) error {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
-
-	tip := b.bestChain.tip()
-	node := newBlockNode(header, tip)
-	b.index.AddNode(node)
-	b.index.SetStatusFlags(node, statusValid)
-	b.bestChain.SetTip(node)
-	b.stateSnapshot = newBestState(node, 0, 0, 0, node.CalcPastMedianTime())
-
-	// Atomically insert info into the database.
-	err := b.db.Update(func(dbTx database.Tx) error {
-		// Update best block state.
-		if err := dbPutBestState(dbTx, b.stateSnapshot, node.workSum); err != nil {
-			return err
-		}
-
-		if b.indexManager != nil {
-			msgBlock := wire.NewMsgBlock(header)
-			block := bchutil.NewBlock(msgBlock)
-			block.SetHeight(node.height)
-			err := b.indexManager.ConnectBlock(dbTx, block, nil)
-			if err != nil {
-				return err
-			}
-		}
-
-		// Add the block hash and height to the block index which tracks
-		// the main chain.
-		headerHash := header.BlockHash()
-		return dbPutBlockIndex(dbTx, &headerHash, node.height)
-	})
-	if err != nil {
-		return err
-	}
-	return b.index.flushToDB()
 }
 
 // GetOrphanRoot returns the head of the chain for the provided hash from the
@@ -405,7 +286,7 @@ func (b *BlockChain) removeOrphanBlock(orphan *orphanBlock) {
 // It also imposes a maximum limit on the number of outstanding orphan
 // blocks and will remove the oldest received orphan block if the limit is
 // exceeded.
-func (b *BlockChain) addOrphanBlock(block *bchutil.Block) {
+func (b *BlockChain) addOrphanBlock(block *dogutil.Block) {
 	// Remove expired orphan blocks.
 	for _, oBlock := range b.orphans {
 		if time.Now().After(oBlock.expiration) {
@@ -467,7 +348,7 @@ type SequenceLock struct {
 // the candidate transaction to be included in a block.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) CalcSequenceLock(tx *bchutil.Tx, utxoView *UtxoViewpoint, mempool bool) (*SequenceLock, error) {
+func (b *BlockChain) CalcSequenceLock(tx *dogutil.Tx, utxoView *UtxoViewpoint, mempool bool) (*SequenceLock, error) {
 	b.chainLock.Lock()
 	defer b.chainLock.Unlock()
 
@@ -478,7 +359,7 @@ func (b *BlockChain) CalcSequenceLock(tx *bchutil.Tx, utxoView *UtxoViewpoint, m
 // transaction. See the exported version, CalcSequenceLock for further details.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) calcSequenceLock(node *blockNode, tx *bchutil.Tx, utxoView *UtxoViewpoint, mempool bool) (*SequenceLock, error) {
+func (b *BlockChain) calcSequenceLock(node *blockNode, tx *dogutil.Tx, utxoView *UtxoViewpoint, mempool bool) (*SequenceLock, error) {
 	// A value of -1 for each relative lock type represents a relative time
 	// lock value that will allow a transaction to be included in a block
 	// at any given height or time. This value is returned as the relative
@@ -677,7 +558,7 @@ func (b *BlockChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 // it would be inefficient to repeat it.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) connectBlock(node *blockNode, block *bchutil.Block,
+func (b *BlockChain) connectBlock(node *blockNode, block *dogutil.Block,
 	view *UtxoViewpoint, stxos []SpentTxOut) error {
 
 	// Make sure it's extending the end of the best chain.
@@ -722,7 +603,8 @@ func (b *BlockChain) connectBlock(node *blockNode, block *bchutil.Block,
 	b.stateLock.RUnlock()
 	numTxns := uint64(len(block.MsgBlock().Transactions))
 	blockSize := uint64(block.MsgBlock().SerializeSize())
-	state := newBestState(node, blockSize, numTxns,
+	blockWeight := uint64(GetBlockWeight(block))
+	state := newBestState(node, blockSize, blockWeight, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime())
 
 	// Atomically insert info into the database.
@@ -736,6 +618,14 @@ func (b *BlockChain) connectBlock(node *blockNode, block *bchutil.Block,
 		// Add the block hash and height to the block index which tracks
 		// the main chain.
 		err = dbPutBlockIndex(dbTx, block.Hash(), node.height)
+		if err != nil {
+			return err
+		}
+
+		// Update the utxo set using the state of the utxo view.  This
+		// entails removing all of the utxos spent and adding the new
+		// ones created by the block.
+		err = dbPutUtxoView(dbTx, view)
 		if err != nil {
 			return err
 		}
@@ -763,13 +653,9 @@ func (b *BlockChain) connectBlock(node *blockNode, block *bchutil.Block,
 		return err
 	}
 
-	// Commit all modifications made to the view into the utxo state.  This also
-	// prunes these changes from the view.
-	b.stateLock.Lock()
-	if err := b.utxoCache.Commit(view); err != nil {
-		log.Errorf("error committing block %s(%d) to utxo cache: %s", block.Hash(), block.Height(), err.Error())
-	}
-	b.stateLock.Unlock()
+	// Prune fully spent entries and mark all entries in the view unmodified
+	// now that the modifications have been committed to the database.
+	view.commit()
 
 	// This node is now the end of the best chain.
 	b.bestChain.SetTip(node)
@@ -786,41 +672,18 @@ func (b *BlockChain) connectBlock(node *blockNode, block *bchutil.Block,
 	// Notify the caller that the block was connected to the main chain.
 	// The caller would typically want to react with actions such as
 	// updating wallets.
-	b.notificationLock.Lock()
 	b.chainLock.Unlock()
 	b.sendNotification(NTBlockConnected, block)
 	b.chainLock.Lock()
-	b.notificationLock.Unlock()
 
-	b.stateLock.Lock()
-	defer b.stateLock.Unlock()
-
-	// Prune the blockchain if we're in prune mode.
-	if b.pruneMode {
-		if err := b.prune(); err != nil {
-			return err
-		}
-	}
-
-	// Since we just changed the UTXO cache, we make sure it didn't exceed its
-	// maximum size. If we're in prune mode we have to flush whenever our last
-	// flush is at the tail end of the prune depth so that we can continue to
-	// recover from a hard shutdown.
-	flushMode := FlushIfNeeded
-	if b.pruneMode {
-		node := b.index.LookupNode(&b.utxoCache.lastFlushHash)
-		if node.height <= block.Height()-int32(b.pruneDepth) {
-			flushMode = FlushRequired
-		}
-	}
-	return b.utxoCache.Flush(flushMode, state)
+	return nil
 }
 
 // disconnectBlock handles disconnecting the passed node/block from the end of
 // the main (best) chain.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) disconnectBlock(node *blockNode, block *bchutil.Block, view *UtxoViewpoint) error {
+func (b *BlockChain) disconnectBlock(node *blockNode, block *dogutil.Block, view *UtxoViewpoint) error {
 	// Make sure the node being disconnected is the end of the best chain.
 	if !node.hash.IsEqual(&b.bestChain.Tip().hash) {
 		return AssertError("disconnectBlock must be called with the " +
@@ -829,7 +692,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *bchutil.Block, view
 
 	// Load the previous block since some details for it are needed below.
 	prevNode := node.parent
-	var prevBlock *bchutil.Block
+	var prevBlock *dogutil.Block
 	err := b.db.View(func(dbTx database.Tx) error {
 		var err error
 		prevBlock, err = dbFetchBlockByNode(dbTx, prevNode)
@@ -852,8 +715,9 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *bchutil.Block, view
 	b.stateLock.RUnlock()
 	numTxns := uint64(len(prevBlock.MsgBlock().Transactions))
 	blockSize := uint64(prevBlock.MsgBlock().SerializeSize())
+	blockWeight := uint64(GetBlockWeight(prevBlock))
 	newTotalTxns := curTotalTxns - uint64(len(block.MsgBlock().Transactions))
-	state := newBestState(prevNode, blockSize, numTxns,
+	state := newBestState(prevNode, blockSize, blockWeight, numTxns,
 		newTotalTxns, prevNode.CalcPastMedianTime())
 
 	err = b.db.Update(func(dbTx database.Tx) error {
@@ -866,6 +730,14 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *bchutil.Block, view
 		// Remove the block hash and height from the block index which
 		// tracks the main chain.
 		err = dbRemoveBlockIndex(dbTx, block.Hash(), node.height)
+		if err != nil {
+			return err
+		}
+
+		// Update the utxo set using the state of the utxo view.  This
+		// entails restoring all of the utxos spent and removing the new
+		// ones created by the block.
+		err = dbPutUtxoView(dbTx, view)
 		if err != nil {
 			return err
 		}
@@ -900,13 +772,9 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *bchutil.Block, view
 		return err
 	}
 
-	// Commit all modifications made to the view into the utxo state.  This also
-	// prunes these changes from the view.
-	b.stateLock.Lock()
-	if err := b.utxoCache.Commit(view); err != nil {
-		log.Errorf("error committing disconnected block %s(%d) to utxo cache: %s", block.Hash(), block.Height(), err.Error())
-	}
-	b.stateLock.Unlock()
+	// Prune fully spent entries and mark all entries in the view unmodified
+	// now that the modifications have been committed to the database.
+	view.commit()
 
 	// This node's parent is now the end of the best chain.
 	b.bestChain.SetTip(node.parent)
@@ -923,21 +791,15 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *bchutil.Block, view
 	// Notify the caller that the block was disconnected from the main
 	// chain.  The caller would typically want to react with actions such as
 	// updating wallets.
-	b.notificationLock.Lock()
 	b.chainLock.Unlock()
 	b.sendNotification(NTBlockDisconnected, block)
 	b.chainLock.Lock()
-	b.notificationLock.Unlock()
 
-	// Since we just changed the UTXO cache, we make sure it didn't exceed its
-	// maximum size.
-	b.stateLock.Lock()
-	defer b.stateLock.Unlock()
-	return b.utxoCache.Flush(FlushIfNeeded, state)
+	return nil
 }
 
 // countSpentOutputs returns the number of utxos the passed block spends.
-func countSpentOutputs(block *bchutil.Block) int {
+func countSpentOutputs(block *dogutil.Block) int {
 	// Exclude the coinbase transaction since it can't spend anything.
 	var numSpent int
 	for _, tx := range block.Transactions()[1:] {
@@ -962,10 +824,6 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	if detachNodes.Len() == 0 && attachNodes.Len() == 0 {
 		return nil
 	}
-
-	// The rest of the reorg depends on all STXOs already being in the database
-	// so we flush before reorg
-	b.utxoCache.Flush(FlushRequired, b.BestSnapshot())
 
 	// Ensure the provided nodes match the current best chain.
 	tip := b.bestChain.Tip()
@@ -999,18 +857,19 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// be loaded from the database during the reorg check phase below and
 	// then they are needed again when doing the actual database updates.
 	// Rather than doing two loads, cache the loaded data into these slices.
-	detachBlocks := make([]*bchutil.Block, 0, detachNodes.Len())
+	detachBlocks := make([]*dogutil.Block, 0, detachNodes.Len())
 	detachSpentTxOuts := make([][]SpentTxOut, 0, detachNodes.Len())
-	attachBlocks := make([]*bchutil.Block, 0, attachNodes.Len())
+	attachBlocks := make([]*dogutil.Block, 0, attachNodes.Len())
 
 	// Disconnect all of the blocks back to the point of the fork.  This
 	// entails loading the blocks and their associated spent txos from the
 	// database and using that information to unspend all of the spent txos
 	// and remove the utxos created by the blocks.
 	view := NewUtxoViewpoint()
+	view.SetBestHash(&oldBest.hash)
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
-		var block *bchutil.Block
+		var block *dogutil.Block
 		err := b.db.View(func(dbTx database.Tx) error {
 			var err error
 			block, err = dbFetchBlockByNode(dbTx, n)
@@ -1027,7 +886,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err = view.addInputUtxos(b.utxoCache, block, true)
+		err = view.fetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
@@ -1047,7 +906,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		detachBlocks = append(detachBlocks, block)
 		detachSpentTxOuts = append(detachSpentTxOuts, stxos)
 
-		err = disconnectTransactions(view, block, stxos)
+		err = view.disconnectTransactions(b.db, block, stxos)
 		if err != nil {
 			return err
 		}
@@ -1077,7 +936,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
 
-		var block *bchutil.Block
+		var block *dogutil.Block
 		err := b.db.View(func(dbTx database.Tx) error {
 			var err error
 			block, err = dbFetchBlockByNode(dbTx, n)
@@ -1094,11 +953,11 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		// checkConnectBlock gets skipped, we still need to update the UTXO
 		// view.
 		if b.index.NodeStatus(n).KnownValid() {
-			err = view.addInputUtxos(b.utxoCache, block, true)
+			err = view.fetchInputUtxos(b.db, block)
 			if err != nil {
 				return err
 			}
-			err = connectTransactions(view, block, nil, true)
+			err = view.connectTransactions(block, nil)
 			if err != nil {
 				return err
 			}
@@ -1137,6 +996,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// view to be valid from the viewpoint of each block being connected or
 	// disconnected.
 	view = NewUtxoViewpoint()
+	view.SetBestHash(&b.bestChain.Tip().hash)
 
 	// Disconnect blocks from the main chain.
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
@@ -1145,14 +1005,15 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := view.addInputUtxos(b.utxoCache, block, true)
+		err := view.fetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
 
 		// Update the view to unspend all of the spent txos and remove
 		// the utxos created by the block.
-		err = disconnectTransactions(view, block, detachSpentTxOuts[i])
+		err = view.disconnectTransactions(b.db, block,
+			detachSpentTxOuts[i])
 		if err != nil {
 			return err
 		}
@@ -1171,7 +1032,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := view.addInputUtxos(b.utxoCache, block, true)
+		err := view.fetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
@@ -1181,7 +1042,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		// to it.  Also, provide an stxo slice so the spent txout
 		// details are generated.
 		stxos := make([]SpentTxOut, 0, countSpentOutputs(block))
-		err = connectTransactions(view, block, &stxos, true)
+		err = view.connectTransactions(block, &stxos)
 		if err != nil {
 			return err
 		}
@@ -1191,15 +1052,6 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		if err != nil {
 			return err
 		}
-
-		// Notify other peers that this block was accepted. Since it was
-		// originally seen as an orphan the accept message was never sent
-		// to downstream peers.
-		b.notificationLock.Lock()
-		b.chainLock.Unlock()
-		b.sendNotification(NTBlockAccepted, block)
-		b.chainLock.Lock()
-		b.notificationLock.Unlock()
 	}
 
 	// Log the point where the chain forked and old and new best chain
@@ -1230,8 +1082,8 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 //    This is useful when using checkpoints.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) connectBestChain(node *blockNode, block *bchutil.Block, flags BehaviorFlags) (bool, error) {
-	fastAdd := flags.HasFlag(BFFastAdd)
+func (b *BlockChain) connectBestChain(node *blockNode, block *dogutil.Block, flags BehaviorFlags) (bool, error) {
+	fastAdd := flags&BFFastAdd == BFFastAdd
 
 	flushIndexState := func() {
 		// Intentionally ignore errors writing updated node status to DB. If
@@ -1255,6 +1107,7 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *bchutil.Block, fla
 		// to the main chain without violating any rules and without
 		// actually connecting the block.
 		view := NewUtxoViewpoint()
+		view.SetBestHash(parentHash)
 		stxos := make([]SpentTxOut, 0, countSpentOutputs(block))
 		if !fastAdd {
 			err := b.checkConnectBlock(node, block, view, &stxos)
@@ -1278,11 +1131,11 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *bchutil.Block, fla
 		// utxos, spend them, and add the new utxos being created by
 		// this block.
 		if fastAdd {
-			err := view.addInputUtxos(b.utxoCache, block, true)
+			err := view.fetchInputUtxos(b.db, block)
 			if err != nil {
 				return false, err
 			}
-			err = connectTransactions(view, block, &stxos, false)
+			err = view.connectTransactions(block, &stxos)
 			if err != nil {
 				return false, err
 			}
@@ -1425,19 +1278,6 @@ func (b *BlockChain) HeaderByHash(hash *chainhash.Hash) (wire.BlockHeader, error
 	return node.Header(), nil
 }
 
-// HeaderByHeight returns the block header identified by the given height or an
-// error if it doesn't exist. Note that this will return headers from the main
-// chain.
-func (b *BlockChain) HeaderByHeight(height int32) (wire.BlockHeader, error) {
-	node := b.bestChain.NodeByHeight(height)
-	if node == nil {
-		err := fmt.Errorf("header at height %d is not known", height)
-		return wire.BlockHeader{}, err
-	}
-
-	return node.Header(), nil
-}
-
 // MainChainHasBlock returns whether or not the block with the given hash is in
 // the main chain.
 //
@@ -1497,21 +1337,10 @@ func (b *BlockChain) BlockHashByHeight(blockHeight int32) (*chainhash.Hash, erro
 	if node == nil {
 		str := fmt.Sprintf("no block at height %d exists", blockHeight)
 		return nil, errNotInMainChain(str)
+
 	}
 
 	return &node.hash, nil
-}
-
-// MedianTimeByHash returns the median time of the block with the provided hash
-// if it is in the block index.
-//
-// This function is safe for concurrent access.
-func (b *BlockChain) MedianTimeByHash(hash *chainhash.Hash) (time.Time, error) {
-	node := b.index.LookupNode(hash)
-	if node == nil {
-		return time.Time{}, fmt.Errorf("no block with hash %s exists", hash)
-	}
-	return node.CalcPastMedianTime(), nil
 }
 
 // HeightRange returns a range of block hashes for the given start and end
@@ -1659,7 +1488,7 @@ func (b *BlockChain) IntervalBlockHashes(endHash *chainhash.Hash, interval int,
 // functions.
 //
 // This function MUST be called with the chain state lock held (for reads).
-func (b *BlockChain) locateInventory(locator BlockLocator, hashStop *chainhash.Hash, maxEntries uint32, headersOnly bool) (*blockNode, uint32) {
+func (b *BlockChain) locateInventory(locator BlockLocator, hashStop *chainhash.Hash, maxEntries uint32) (*blockNode, uint32) {
 	// There are no block locators so a specific block is being requested
 	// as identified by the stop hash.
 	stopNode := b.index.LookupNode(hashStop)
@@ -1681,16 +1510,6 @@ func (b *BlockChain) locateInventory(locator BlockLocator, hashStop *chainhash.H
 		if node != nil && b.bestChain.Contains(node) {
 			startNode = node
 			break
-		}
-	}
-
-	// If we're in prune mode and the blocks that are being requested
-	// are below our prune depth then just return nil as we can't
-	// serve these blocks if requested.
-	if b.pruneMode && !headersOnly {
-		tip := b.bestChain.Tip()
-		if startNode.height < tip.height-int32(b.pruneDepth) {
-			return nil, 0
 		}
 	}
 
@@ -1727,7 +1546,7 @@ func (b *BlockChain) locateBlocks(locator BlockLocator, hashStop *chainhash.Hash
 	// Find the node after the first known block in the locator and the
 	// total number of nodes after it needed while respecting the stop hash
 	// and max entries.
-	node, total := b.locateInventory(locator, hashStop, maxHashes, false)
+	node, total := b.locateInventory(locator, hashStop, maxHashes)
 	if total == 0 {
 		return nil
 	}
@@ -1772,7 +1591,7 @@ func (b *BlockChain) locateHeaders(locator BlockLocator, hashStop *chainhash.Has
 	// Find the node after the first known block in the locator and the
 	// total number of nodes after it needed while respecting the stop hash
 	// and max entries.
-	node, total := b.locateInventory(locator, hashStop, maxHeaders, true)
+	node, total := b.locateInventory(locator, hashStop, maxHeaders)
 	if total == 0 {
 		return nil
 	}
@@ -1784,299 +1603,6 @@ func (b *BlockChain) locateHeaders(locator BlockLocator, hashStop *chainhash.Has
 		node = b.bestChain.Next(node)
 	}
 	return headers
-}
-
-// InvalidateBlock takes a block hash and invalidates it.
-//
-// This function is safe for concurrent access.
-func (b *BlockChain) InvalidateBlock(hash *chainhash.Hash) error {
-	return b.invalidateBlock(hash)
-}
-
-// invalidateBlock takes a block hash and invalidates it.
-func (b *BlockChain) invalidateBlock(hash *chainhash.Hash) error {
-	node := b.index.LookupNode(hash)
-	if node == nil {
-		err := fmt.Errorf("block %s is not known", hash)
-		return err
-	}
-
-	// No need to invalidate if its already invalid.
-	if node.status.KnownInvalid() {
-		err := fmt.Errorf("block %s is already invalid", hash)
-		return err
-	}
-
-	if node.parent == nil {
-		err := fmt.Errorf("block %s has no parent", hash)
-		return err
-	}
-
-	b.index.SetStatusFlags(node, statusValidateFailed)
-	b.index.UnsetStatusFlags(node, statusValid)
-
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
-	detachNodes, attachNodes := b.getReorganizeNodes(node.parent)
-
-	err := b.reorganizeChain(detachNodes, attachNodes)
-	if err != nil {
-		return err
-	}
-
-	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
-		n := e.Value.(*blockNode)
-
-		b.index.SetStatusFlags(n, statusInvalidAncestor)
-		b.index.UnsetStatusFlags(n, statusValid)
-	}
-
-	if writeErr := b.index.flushToDB(); writeErr != nil {
-		log.Warnf("Error flushing block index changes to disk: %v", writeErr)
-	}
-
-	return nil
-}
-
-// ReconsiderBlock takes a block hash and allows it to be revalidated.
-//
-// This function is safe for concurrent access.
-func (b *BlockChain) ReconsiderBlock(hash *chainhash.Hash) error {
-	return b.reconsiderBlock(hash)
-}
-
-// reconsiderBlock takes a block hash and allows it to be revalidated.
-func (b *BlockChain) reconsiderBlock(hash *chainhash.Hash) error {
-	node := b.index.LookupNode(hash)
-	if node == nil {
-		err := fmt.Errorf("block %s is not known", hash)
-		return err
-	}
-
-	// No need to reconsider, it is already valid.
-	if node.status.KnownValid() {
-		err := fmt.Errorf("block %s is already valid", hash)
-		return err
-	}
-
-	// Keep a reference to the first node in the chain of invalid
-	// blocks so we can reprocess after status flags are updated.
-	firstNode := node
-
-	// Find previous node to the point where the blocks are valid again.
-	for n := node; n.status.KnownInvalid(); n = n.parent {
-		b.index.UnsetStatusFlags(n, statusInvalidAncestor)
-		b.index.UnsetStatusFlags(n, statusValidateFailed)
-
-		firstNode = n
-	}
-
-	var blk *bchutil.Block
-	err := b.db.View(func(dbTx database.Tx) error {
-		var err error
-		blk, err = dbFetchBlockByNode(dbTx, firstNode)
-		return err
-	})
-	if err != nil {
-		return err
-	}
-
-	// Process it all again. This will take care of the
-	// orphans as well.
-	_, _, err = b.ProcessBlock(blk, BFNoDupBlockCheck)
-	if err != nil {
-		return err
-	}
-
-	if writeErr := b.index.flushToDB(); writeErr != nil {
-		log.Warnf("Error flushing block index changes to disk: %v", writeErr)
-	}
-
-	return nil
-}
-
-// Prune deletes the block data and spend journals for all blocks deeper than
-// the set prune depth.
-//
-// This function is safe for concurrent access.
-func (b *BlockChain) Prune() error {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
-	return b.prune()
-}
-
-// RollbackUtxoSet will perform an in-memory rollback of the Utxo set to the
-// given block height and return a UtxoViewpoint containing the diff between the
-// current Utxo set and the Utxo set at the provided height. Calling this function
-// will not modify the current Utxo state either in the memory cache or on disk.
-//
-// This function is safe for concurrent access.
-func (b *BlockChain) RollbackUtxoSet(height int32) (*UtxoViewpoint, error) {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
-
-	tip := b.bestChain.tip()
-	if height > tip.height {
-		return nil, AssertError(fmt.Sprintf("requested rollback height %d is greater"+
-			" than chain tip of %d", height, tip.height))
-	}
-	if height == tip.height {
-		return NewUtxoViewpoint(), nil
-	}
-
-	log.Infof("Rolling back %d blocks", tip.height-height)
-
-	// Disconnect all of the blocks back to the provided height.  This
-	// entails loading the blocks and their associated spent txos from the
-	// database and using that information to unspend all of the spent txos
-	// and remove the utxos created by the blocks.
-	view := NewUtxoViewpoint()
-	for n := tip; n.height > height; n = n.parent {
-		var block *bchutil.Block
-		err := b.db.View(func(dbTx database.Tx) error {
-			var err error
-			block, err = dbFetchBlockByNode(dbTx, n)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		if n.hash != *block.Hash() {
-			return nil, AssertError(fmt.Sprintf("detach block node hash %v (height "+
-				"%v) does not match previous parent block hash %v", &n.hash,
-				n.height, block.Hash()))
-		}
-
-		// Load all of the utxos referenced by the block that aren't
-		// already in the view.
-		err = view.addInputUtxos(b.utxoCache, block, true)
-		if err != nil {
-			return nil, err
-		}
-
-		// Load all of the spent txos for the block from the spend
-		// journal.
-		var stxos []SpentTxOut
-		err = b.db.View(func(dbTx database.Tx) error {
-			stxos, err = dbFetchSpendJournalEntry(dbTx, block)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		err = disconnectTransactions(view, block, stxos)
-		if err != nil {
-			return nil, err
-		}
-	}
-	log.Info("Finished rolling back blocks")
-	return view, nil
-}
-
-// prune deletes the block data and spend journals for all blocks deeper than
-// the set prune depth.
-//
-// This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) prune() error {
-	return b.db.Update(func(tx database.Tx) error {
-		tip := b.bestChain.Tip()
-		if tip.height <= int32(b.pruneDepth) {
-			return nil
-		}
-		pruneHeight := dbFetchPruneHeight(tx)
-
-		node := b.bestChain.NodeByHeight(tip.height - int32(b.pruneDepth) - 1)
-
-		// Delete blocks before the height
-		if err := tx.DeleteBlocks(uint32(node.height)); err != nil {
-			return err
-		}
-
-		// Loop backwards through the chain and delete the spend journals
-		for ; node.height >= int32(pruneHeight); node = node.parent {
-			hdr := node.Header()
-			blockHash := hdr.BlockHash()
-			if err := dbRemoveSpendJournalEntry(tx, &blockHash); err != nil {
-				return err
-			}
-			if node.height == 0 {
-				break
-			}
-		}
-
-		// Put the prune height to the database
-		return dbPutPruneHeight(tx, uint32(tip.height)-b.pruneDepth)
-	})
-}
-
-// ReIndexChainState will delete the UTXO database bucket and rebuild the UTXO
-// set from blocks on disk. This will take a while.
-//
-// This function is safe for concurrent access.
-func (b *BlockChain) ReIndexChainState() error {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
-
-	// Delete the UTXO bucket and create a new one
-	log.Info("Deleting UTXO database bucket...")
-	err := b.db.Update(func(tx database.Tx) error {
-		if err := tx.Metadata().DeleteBucket(utxoSetBucketName); err != nil {
-			return err
-		}
-		if _, err := tx.Metadata().CreateBucket(utxoSetBucketName); err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	log.Info("Deletion complete. Re-indexing UTXO set...")
-
-	var (
-		blk           *bchutil.Block
-		currentHeight int32 = 1
-		view          *UtxoViewpoint
-		state         *BestState
-	)
-	ticker := time.NewTicker(time.Minute * 5)
-	defer ticker.Stop()
-
-	var heightStr string
-	progress := float64(0.0)
-	go func() {
-		for range ticker.C {
-			progress = math.Min(float64(currentHeight)/float64(len(b.bestChain.nodes)), 1.0) * 100
-			heightStr = fmt.Sprintf("%d/%d (%.2f%%)", currentHeight, len(b.bestChain.nodes), progress)
-			log.Infof("Re-index progress: processed %s", heightStr)
-		}
-	}()
-	for _, node := range b.bestChain.nodes[1:] {
-		view = NewUtxoViewpoint()
-		currentHeight = node.height
-		err := b.db.View(func(tx database.Tx) error {
-			blk, err = dbFetchBlockByNode(tx, node)
-			return err
-		})
-		if err != nil {
-			return err
-		}
-		if err = view.addInputUtxos(b.utxoCache, blk, blk.Height() < b.chainParams.MagneticAnonomalyForkHeight); err != nil {
-			return err
-		}
-		if err = connectTransactions(view, blk, nil, false); err != nil {
-			return err
-		}
-		if err = b.utxoCache.Commit(view); err != nil {
-			return err
-		}
-		state = newBestState(node, 0, 0, 0, time.Time{})
-		if err = b.utxoCache.Flush(FlushIfNeeded, state); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // LocateHeaders returns the headers of the blocks after the first known block
@@ -2114,13 +1640,13 @@ type IndexManager interface {
 	// main chain. The set of output spent within a block is also passed in
 	// so indexers can access the previous output scripts input spent if
 	// required.
-	ConnectBlock(database.Tx, *bchutil.Block, []SpentTxOut) error
+	ConnectBlock(database.Tx, *dogutil.Block, []SpentTxOut) error
 
 	// DisconnectBlock is invoked when a block has been disconnected from
 	// the main chain. The set of outputs scripts that were spent within
 	// this block is also returned so indexers can clean up the prior index
 	// state for this block.
-	DisconnectBlock(database.Tx, *bchutil.Block, []SpentTxOut) error
+	DisconnectBlock(database.Tx, *dogutil.Block, []SpentTxOut) error
 }
 
 // Config is a descriptor which specifies the blockchain instance configuration.
@@ -2130,11 +1656,6 @@ type Config struct {
 	//
 	// This field is required.
 	DB database.DB
-
-	// The maximum size in bytes of the UTXO cache.
-	//
-	// This field is required.
-	UtxoCacheMaxSize uint64
 
 	// Interrupt specifies a channel the caller can close to signal that
 	// long running operations, such as catching up indexes or performing
@@ -2190,34 +1711,6 @@ type Config struct {
 	// This field can be nil if the caller is not interested in using a
 	// signature cache.
 	HashCache *txscript.HashCache
-
-	// ExcessiveBlockSize is the user-configurable max block size
-	ExcessiveBlockSize uint32
-
-	// Prune controls whether or not the blockchain should delete
-	// historical blocks and metadata.
-	Prune bool
-
-	// PruneDepth is the minimum amount of blocks to keep to protect
-	// against a reorg. Everything after the depth will be deleted
-	// whenever we connect a new block.
-	PruneDepth uint32
-
-	// ReIndexChainState will delete the UTXO db bucket and rebuild the
-	// UTXO set from blocks on disk on startup.
-	ReIndexChainState bool
-
-	// FastSync will download, validate, and save the UTXO at the last
-	// checkpoint.
-	FastSync bool
-
-	// FastSyncDataDir is the download directory for the UTXO set. If this
-	// isn't set, it is defaulted to TempDir.
-	FastSyncDataDir string
-
-	// Proxy is ip:port of an optional socks5 proxy to use when downloading
-	// the UTXO set in fast sync mode.
-	Proxy string
 }
 
 // New returns a BlockChain instance using the provided configuration details.
@@ -2231,9 +1724,6 @@ func New(config *Config) (*BlockChain, error) {
 	}
 	if config.TimeSource == nil {
 		return nil, AssertError("blockchain.New timesource is nil")
-	}
-	if config.ExcessiveBlockSize < LegacyMaxBlockSize {
-		return nil, AssertError("blockchain.New excessive block size set lower than LegacyBlockSize")
 	}
 
 	// Generate a checkpoint by height map from the provided checkpoints
@@ -2265,39 +1755,23 @@ func New(config *Config) (*BlockChain, error) {
 		chainParams:         params,
 		timeSource:          config.TimeSource,
 		sigCache:            config.SigCache,
-		excessiveBlockSize:  config.ExcessiveBlockSize,
 		indexManager:        config.IndexManager,
 		minRetargetTimespan: targetTimespan / adjustmentFactor,
 		maxRetargetTimespan: targetTimespan * adjustmentFactor,
 		blocksPerRetarget:   int32(targetTimespan / targetTimePerBlock),
 		index:               newBlockIndex(config.DB, params),
-		utxoCache:           newUtxoCache(config.DB, config.UtxoCacheMaxSize),
 		hashCache:           config.HashCache,
 		bestChain:           newChainView(nil),
 		orphans:             make(map[chainhash.Hash]*orphanBlock),
 		prevOrphans:         make(map[chainhash.Hash][]*orphanBlock),
 		warningCaches:       newThresholdCaches(vbNumBits),
 		deploymentCaches:    newThresholdCaches(chaincfg.DefinedDeployments),
-		pruneMode:           config.Prune,
-		pruneDepth:          config.PruneDepth,
-		fastSyncDataDir:     config.FastSyncDataDir,
-		fastSyncDone:        make(chan struct{}),
 	}
 
 	// Initialize the chain state from the passed database.  When the db
 	// does not yet contain any chain state, both it and the chain state
 	// will be initialized to contain only the genesis block.
-	if err := b.initChainState(config.FastSync); err != nil {
-		return nil, err
-	}
-
-	bestNode := b.bestChain.Tip()
-	lastCheckpoint := b.LatestCheckpoint()
-	config.FastSync = config.FastSync && lastCheckpoint != nil && bestNode.height <= lastCheckpoint.Height
-
-	// Make sure the utxo state is caught up if it was left in an inconsistent
-	// state.
-	if err := b.utxoCache.InitConsistentState(bestNode, config.FastSync, config.Interrupt); err != nil {
+	if err := b.initChainState(); err != nil {
 		return nil, err
 	}
 
@@ -2306,36 +1780,10 @@ func New(config *Config) (*BlockChain, error) {
 		return nil, err
 	}
 
-	// If we're running in pruned mode or fast sync mode then set the chain type in the
-	// database. If not load the chain type from the database.
-	if config.Prune || config.FastSync {
-		err := b.db.Update(func(tx database.Tx) error {
-			return dbPutBlockchainType(tx, prunedBlockchainEntryValue)
-		})
-		if err != nil {
-			return nil, err
-		}
-		b.isPruned = true
-	} else {
-		b.db.View(func(tx database.Tx) error {
-			chainType := dbFetchBlockchainType(tx)
-			if bytes.Equal(chainType, prunedBlockchainEntryValue) {
-				b.isPruned = true
-			}
-			return nil
-		})
-	}
-
-	// If we are pruned then done set any indexes as the manager cannot
-	// currently handle a pruned chain.
-	if b.isPruned {
-		b.indexManager = nil
-	}
-
 	// Initialize and catch up all of the currently active optional indexes
 	// as needed.
-	if b.indexManager != nil {
-		err := b.indexManager.Init(&b, config.Interrupt)
+	if config.IndexManager != nil {
+		err := config.IndexManager.Init(&b, config.Interrupt)
 		if err != nil {
 			return nil, err
 		}
@@ -2346,48 +1794,10 @@ func New(config *Config) (*BlockChain, error) {
 		return nil, err
 	}
 
-	// Run an initial prune if prune mode is set
-	if b.pruneMode {
-		if err := b.Prune(); err != nil {
-			return nil, err
-		}
-	}
-
-	if config.ReIndexChainState {
-		log.Info("Re-indexing UTXO set from disk. This will take a while...")
-		if err := b.ReIndexChainState(); err != nil {
-			return nil, err
-		}
-		log.Info("Re-indexing complete")
-	}
-
-	if config.FastSync {
-		if lastCheckpoint.UtxoSetHash == nil || len(lastCheckpoint.UtxoSetSources) == 0 || lastCheckpoint.UtxoSetSize == 0 {
-			errStr := fmt.Sprintf("chain with %s params does not support fastsync mode", b.chainParams.Name)
-			return nil, AssertError(errStr)
-		}
-		go b.fastSyncUtxoSet(lastCheckpoint, config.Proxy)
-	}
-
+	bestNode := b.bestChain.Tip()
 	log.Infof("Chain state (height %d, hash %v, totaltx %d, work %v)",
 		bestNode.height, bestNode.hash, b.stateSnapshot.TotalTxns,
 		bestNode.workSum)
 
 	return &b, nil
-}
-
-// CachedStateSize returns the total size of the cached state of the blockchain
-// in bytes.
-func (b *BlockChain) CachedStateSize() uint64 {
-	return b.utxoCache.TotalMemoryUsage()
-}
-
-// FlushCachedState flushes all the cached state of the blockchain to the
-// database.
-//
-// This method is safe for concurrent access.
-func (b *BlockChain) FlushCachedState(mode FlushMode) error {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
-	return b.utxoCache.Flush(mode, b.stateSnapshot)
 }

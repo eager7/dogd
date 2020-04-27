@@ -5,7 +5,7 @@
 package blockchain
 
 import (
-	"github.com/eager7/dogd/bchec"
+	"github.com/eager7/dogd/btcec"
 	"github.com/eager7/dogd/txscript"
 )
 
@@ -218,7 +218,7 @@ func isPubKey(script []byte) (bool, []byte) {
 
 		// Ensure the public key is valid.
 		serializedPubKey := script[1:34]
-		_, err := bchec.ParsePubKey(serializedPubKey, bchec.S256())
+		_, err := btcec.ParsePubKey(serializedPubKey, btcec.S256())
 		if err == nil {
 			return true, serializedPubKey
 		}
@@ -230,7 +230,7 @@ func isPubKey(script []byte) (bool, []byte) {
 
 		// Ensure the public key is valid.
 		serializedPubKey := script[1:66]
-		_, err := bchec.ParsePubKey(serializedPubKey, bchec.S256())
+		_, err := btcec.ParsePubKey(serializedPubKey, btcec.S256())
 		if err == nil {
 			return true, serializedPubKey
 		}
@@ -399,7 +399,7 @@ func decompressScript(compressedPkScript []byte) []byte {
 		compressedKey := make([]byte, 33)
 		compressedKey[0] = byte(encodedScriptSize - 2)
 		copy(compressedKey[1:], compressedPkScript[1:])
-		key, err := bchec.ParsePubKey(compressedKey, bchec.S256())
+		key, err := btcec.ParsePubKey(compressedKey, btcec.S256())
 		if err != nil {
 			return nil
 		}
@@ -429,7 +429,7 @@ func decompressScript(compressedPkScript []byte) []byte {
 // While this is simply exchanging one uint64 for another, the resulting value
 // for typical amounts has a much smaller magnitude which results in fewer bytes
 // when encoded as variable length quantity.  For example, consider the amount
-// of 0.1 BCH which is 10000000 satoshi.  Encoding 10000000 as a VLQ would take
+// of 0.1 BTC which is 10000000 satoshi.  Encoding 10000000 as a VLQ would take
 // 4 bytes while encoding the compressed value of 8 as a VLQ only takes 1 byte.
 //
 // Essentially the compression is achieved by splitting the value into an
@@ -448,14 +448,14 @@ func decompressScript(compressedPkScript []byte) []byte {
 //
 // Example encodings:
 // (The numbers in parenthesis are the number of bytes when serialized as a VLQ)
-//            0 (1) -> 0        (1)           *  0.00000000 BCH
-//         1000 (2) -> 4        (1)           *  0.00001000 BCH
-//        10000 (2) -> 5        (1)           *  0.00010000 BCH
-//     12345678 (4) -> 111111101(4)           *  0.12345678 BCH
-//     50000000 (4) -> 47       (1)           *  0.50000000 BCH
-//    100000000 (4) -> 9        (1)           *  1.00000000 BCH
-//    500000000 (5) -> 49       (1)           *  5.00000000 BCH
-//   1000000000 (5) -> 10       (1)           * 10.00000000 BCH
+//            0 (1) -> 0        (1)           *  0.00000000 BTC
+//         1000 (2) -> 4        (1)           *  0.00001000 BTC
+//        10000 (2) -> 5        (1)           *  0.00010000 BTC
+//     12345678 (4) -> 111111101(4)           *  0.12345678 BTC
+//     50000000 (4) -> 47       (1)           *  0.50000000 BTC
+//    100000000 (4) -> 9        (1)           *  1.00000000 BTC
+//    500000000 (5) -> 49       (1)           *  5.00000000 BTC
+//   1000000000 (5) -> 10       (1)           * 10.00000000 BTC
 // -----------------------------------------------------------------------------
 
 // compressTxOutAmount compresses the passed amount according to the domain
@@ -510,7 +510,7 @@ func decompressTxOutAmount(amount uint64) uint64 {
 	// The decompressed amount is now one of the following two equations:
 	// x = 9*n + d - 1  | where e < 9
 	// x = n - 1        | where e = 9
-	var n uint64
+	n := uint64(0)
 	if exponent < 9 {
 		lastDigit := amount%9 + 1
 		amount /= 9

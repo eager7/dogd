@@ -103,50 +103,44 @@ var rpcTestCases = []rpctest.HarnessTestCase{
 var primaryHarness *rpctest.Harness
 
 func TestMain(m *testing.M) {
-	var (
-		err      error
-		exitCode int
-	)
-	// Whatever happens, clean up active harnesses and exit with the last exit code.
-	// Note that Exit at the end of the function would ignore any defers.
-	defer func() {
-		// Clean up any active harnesses that are still currently running.This
-		// includes removing all temporary directories, and shutting down any
-		// created processes.
-		if err = rpctest.TearDownAll(); err != nil {
-			// Don't set exitCode for a teardown error. Just make it visible.
-			fmt.Println("unable to tear down all harnesses:", err)
-		}
-		os.Exit(exitCode)
-	}()
+	var err error
 
 	// In order to properly test scenarios on as if we were on mainnet,
 	// ensure that non-standard transactions aren't accepted into the
 	// mempool or relayed.
-	bchdCfg := []string{"--rejectnonstd"}
-	primaryHarness, err = rpctest.New(&chaincfg.SimNetParams, nil, bchdCfg)
+	btcdCfg := []string{"--rejectnonstd"}
+	primaryHarness, err = rpctest.New(&chaincfg.SimNetParams, nil, btcdCfg)
 	if err != nil {
 		fmt.Println("unable to create primary harness: ", err)
-		exitCode = 1
-		return
+		os.Exit(1)
 	}
-	defer func() {
-		if err := primaryHarness.TearDown(); err != nil {
-			// Don't set exitCode for a teardown error. Just make it visible.
-			fmt.Println("unable to tear down primary harness:", err)
-		}
-	}()
 
 	// Initialize the primary mining node with a chain of length 125,
 	// providing 25 mature coinbases to allow spending from for testing
 	// purposes.
 	if err := primaryHarness.SetUp(true, 25); err != nil {
 		fmt.Println("unable to setup test chain: ", err)
-		exitCode = 1
-		return
+
+		// Even though the harness was not fully setup, it still needs
+		// to be torn down to ensure all resources such as temp
+		// directories are cleaned up.  The error is intentionally
+		// ignored since this is already an error path and nothing else
+		// could be done about it anyways.
+		_ = primaryHarness.TearDown()
+		os.Exit(1)
 	}
 
-	exitCode = m.Run()
+	exitCode := m.Run()
+
+	// Clean up any active harnesses that are still currently running.This
+	// includes removing all temporary directories, and shutting down any
+	// created processes.
+	if err := rpctest.TearDownAll(); err != nil {
+		fmt.Println("unable to tear down all harnesses: ", err)
+		os.Exit(1)
+	}
+
+	os.Exit(exitCode)
 }
 
 func TestRpcServer(t *testing.T) {
@@ -154,7 +148,7 @@ func TestRpcServer(t *testing.T) {
 	defer func() {
 		// If one of the integration tests caused a panic within the main
 		// goroutine, then tear down all the harnesses in order to avoid
-		// any leaked bchd processes.
+		// any leaked btcd processes.
 		if r := recover(); r != nil {
 			fmt.Println("recovering from test panic: ", r)
 			if err := rpctest.TearDownAll(); err != nil {

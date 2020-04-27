@@ -58,9 +58,17 @@ const (
 	// SignatureScript length 1 byte + Sequence 4 bytes.
 	minTxInPayload = 9 + chainhash.HashSize
 
+	// maxTxInPerMessage is the maximum number of transactions inputs that
+	// a transaction which fits into a message could possibly have.
+	maxTxInPerMessage = (MaxMessagePayload / minTxInPayload) + 1
+
 	// MinTxOutPayload is the minimum payload size for a transaction output.
 	// Value 8 bytes + Varint for PkScript length 1 byte.
 	MinTxOutPayload = 9
+
+	// maxTxOutPerMessage is the maximum number of transactions outputs that
+	// a transaction which fits into a message could possibly have.
+	maxTxOutPerMessage = (MaxMessagePayload / MinTxOutPayload) + 1
 
 	// minTxPayload is the minimum payload size for a transaction.  Note
 	// that any realistically usable transaction must have at least one
@@ -85,19 +93,30 @@ const (
 	// peers.  Thus, the peak usage of the free list is 12,500 * 512 =
 	// 6,400,000 bytes.
 	freeListMaxItems = 12500
+
+	// maxWitnessItemsPerInput is the maximum number of witness items to
+	// be read for the witness data for a single TxIn. This number is
+	// derived using a possble lower bound for the encoding of a witness
+	// item: 1 byte for length + 1 byte for the witness item itself, or two
+	// bytes. This value is then divided by the currently allowed maximum
+	// "cost" for a transaction.
+	maxWitnessItemsPerInput = 500000
+
+	// maxWitnessItemSize is the maximum allowed size for an item within
+	// an input's witness data. This number is derived from the fact that
+	// for script validation, each pushed item onto the stack must be less
+	// than 10k bytes.
+	maxWitnessItemSize = 11000
 )
 
-// maxTxInPerMessage returnsthe maximum number of transactions inputs that
-// a transaction which fits into a message could possibly have.
-func maxTxInPerMessage() uint32 {
-	return (maxMessagePayload() / minTxInPayload) + 1
-}
-
-// maxTxOutPerMessage returns the maximum number of transactions outputs that
-// a transaction which fits into a message could possibly have.
-func maxTxOutPerMessage() uint32 {
-	return (maxMessagePayload() / MinTxOutPayload) + 1
-}
+// witnessMarkerBytes are a pair of bytes specific to the witness encoding. If
+// this sequence is encoutered, then it indicates a transaction has iwtness
+// data. The first byte is an always 0x00 marker byte, which allows decoders to
+// distinguish a serialized transaction with witnesses from a regular (legacy)
+// one. The second byte is the Flag field, which at the moment is always 0x01,
+// but may be extended in the future to accommodate auxiliary non-committed
+// fields.
+var witessMarkerBytes = []byte{0x00, 0x01}
 
 // scriptFreeList defines a free list of byte slices (up to the maximum number
 // defined by the freeListMaxItems constant) that have a cap according to the
@@ -172,20 +191,6 @@ func NewOutPoint(hash *chainhash.Hash, index uint32) *OutPoint {
 	}
 }
 
-// Deserialize will read bytes from a reader and deserialize them
-// into the associated outpoint.
-func (o *OutPoint) Deserialize(r io.Reader) error {
-	return readOutPoint(r, ProtocolVersion, 0, o)
-}
-
-// Serialize writes the outpoint to the write using the same
-// format that the outpoint is transmitted on the wire. That is,
-// 32-byte little endian hash followed by 4-byte little endian
-// index.
-func (o *OutPoint) Serialize(w io.Writer) error {
-	return writeOutPoint(w, ProtocolVersion, 0, o)
-}
-
 // String returns the OutPoint in the human-readable form "hash:index".
 func (o OutPoint) String() string {
 	// Allocate enough for hash string, colon, and 10 digits.  Although
@@ -205,6 +210,7 @@ func (o OutPoint) String() string {
 type TxIn struct {
 	PreviousOutPoint OutPoint
 	SignatureScript  []byte
+	Witness          TxWitness
 	Sequence         uint32
 }
 
@@ -221,12 +227,34 @@ func (t *TxIn) SerializeSize() int {
 // NewTxIn returns a new bitcoin transaction input with the provided
 // previous outpoint point and signature script with a default sequence of
 // MaxTxInSequenceNum.
-func NewTxIn(prevOut *OutPoint, signatureScript []byte) *TxIn {
+func NewTxIn(prevOut *OutPoint, signatureScript []byte, witness [][]byte) *TxIn {
 	return &TxIn{
 		PreviousOutPoint: *prevOut,
 		SignatureScript:  signatureScript,
+		Witness:          witness,
 		Sequence:         MaxTxInSequenceNum,
 	}
+}
+
+// TxWitness defines the witness for a TxIn. A witness is to be interpreted as
+// a slice of byte slices, or a stack with one or many elements.
+type TxWitness [][]byte
+
+// SerializeSize returns the number of bytes it would take to serialize the the
+// transaction input's witness.
+func (t TxWitness) SerializeSize() int {
+	// A varint to signal the number of elements the witness has.
+	n := VarIntSerializeSize(uint64(len(t)))
+
+	// For each element in the witness, we'll need a varint to signal the
+	// size of the element, then finally the number of bytes the element
+	// itself comprises.
+	for _, witItem := range t {
+		n += VarIntSerializeSize(uint64(len(witItem)))
+		n += len(witItem)
+	}
+
+	return n
 }
 
 // TxOut defines a bitcoin transaction output.
@@ -281,9 +309,24 @@ func (msg *MsgTx) TxHash() chainhash.Hash {
 	// Ignore the error returns since the only way the encode could fail
 	// is being out of memory or due to nil pointers, both of which would
 	// cause a run-time panic.
-	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
-	_ = msg.Serialize(buf)
+	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSizeStripped()))
+	_ = msg.SerializeNoWitness(buf)
 	return chainhash.DoubleHashH(buf.Bytes())
+}
+
+// WitnessHash generates the hash of the transaction serialized according to
+// the new witness serialization defined in BIP0141 and BIP0144. The final
+// output is used within the Segregated Witness commitment of all the witnesses
+// within a block. If a transaction has no witness data, then the witness hash,
+// is the same as its txid.
+func (msg *MsgTx) WitnessHash() chainhash.Hash {
+	if msg.HasWitness() {
+		buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
+		_ = msg.Serialize(buf)
+		return chainhash.DoubleHashH(buf.Bytes())
+	}
+
+	return msg.TxHash()
 }
 
 // Copy creates a deep copy of a transaction so that the original does not get
@@ -322,6 +365,18 @@ func (msg *MsgTx) Copy() *MsgTx {
 			Sequence:         oldTxIn.Sequence,
 		}
 
+		// If the transaction is witnessy, then also copy the
+		// witnesses.
+		if len(oldTxIn.Witness) != 0 {
+			// Deep copy the old witness data.
+			newTxIn.Witness = make([][]byte, len(oldTxIn.Witness))
+			for i, oldItem := range oldTxIn.Witness {
+				newItem := make([]byte, len(oldItem))
+				copy(newItem, oldItem)
+				newTxIn.Witness[i] = newItem
+			}
+		}
+
 		// Finally, append this fully copied txin.
 		newTx.TxIn = append(newTx.TxIn, &newTxIn)
 	}
@@ -349,11 +404,11 @@ func (msg *MsgTx) Copy() *MsgTx {
 	return &newTx
 }
 
-// BchDecode decodes r using the bitcoin protocol encoding into the receiver.
+// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 // See Deserialize for decoding transactions stored to disk, such as in a
 // database, as opposed to decoding transactions from the wire.
-func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	version, err := binarySerializer.Uint32(r, littleEndian)
 	if err != nil {
 		return err
@@ -365,13 +420,38 @@ func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 		return err
 	}
 
+	// A count of zero (meaning no TxIn's to the uninitiated) indicates
+	// this is a transaction with witness data.
+	var flag [1]byte
+	if count == 0 && enc == WitnessEncoding {
+		// Next, we need to read the flag, which is a single byte.
+		if _, err = io.ReadFull(r, flag[:]); err != nil {
+			return err
+		}
+
+		// At the moment, the flag MUST be 0x01. In the future other
+		// flag types may be supported.
+		if flag[0] != 0x01 {
+			str := fmt.Sprintf("witness tx but flag byte is %x", flag)
+			return messageError("MsgTx.BtcDecode", str)
+		}
+
+		// With the Segregated Witness specific fields decoded, we can
+		// now read in the actual txin count.
+		count, err = ReadVarInt(r, pver)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Prevent more input transactions than could possibly fit into a
 	// message.  It would be possible to cause memory exhaustion and panics
 	// without a sane upper bound on this count.
-	if count > uint64(maxTxInPerMessage()) {
+	if count > uint64(maxTxInPerMessage) {
 		str := fmt.Sprintf("too many input transactions to fit into "+
-			"max message size [count %d, max %d]", count, maxTxInPerMessage())
-		return messageError("MsgTx.BchDecode", str)
+			"max message size [count %d, max %d]", count,
+			maxTxInPerMessage)
+		return messageError("MsgTx.BtcDecode", str)
 	}
 
 	// returnScriptBuffers is a closure that returns any script buffers that
@@ -387,6 +467,12 @@ func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 
 			if txIn.SignatureScript != nil {
 				scriptPool.Return(txIn.SignatureScript)
+			}
+
+			for _, witnessElem := range txIn.Witness {
+				if witnessElem != nil {
+					scriptPool.Return(witnessElem)
+				}
 			}
 		}
 		for _, txOut := range msg.TxOut {
@@ -423,11 +509,12 @@ func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 	// Prevent more output transactions than could possibly fit into a
 	// message.  It would be possible to cause memory exhaustion and panics
 	// without a sane upper bound on this count.
-	if count > uint64(maxTxOutPerMessage()) {
+	if count > uint64(maxTxOutPerMessage) {
 		returnScriptBuffers()
 		str := fmt.Sprintf("too many output transactions to fit into "+
-			"max message size [count %d, max %d]", count, maxTxOutPerMessage())
-		return messageError("MsgTx.BchDecode", str)
+			"max message size [count %d, max %d]", count,
+			maxTxOutPerMessage)
+		return messageError("MsgTx.BtcDecode", str)
 	}
 
 	// Deserialize the outputs.
@@ -444,6 +531,45 @@ func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 			return err
 		}
 		totalScriptSize += uint64(len(to.PkScript))
+	}
+
+	// If the transaction's flag byte isn't 0x00 at this point, then one or
+	// more of its inputs has accompanying witness data.
+	if flag[0] != 0 && enc == WitnessEncoding {
+		for _, txin := range msg.TxIn {
+			// For each input, the witness is encoded as a stack
+			// with one or more items. Therefore, we first read a
+			// varint which encodes the number of stack items.
+			witCount, err := ReadVarInt(r, pver)
+			if err != nil {
+				returnScriptBuffers()
+				return err
+			}
+
+			// Prevent a possible memory exhaustion attack by
+			// limiting the witCount value to a sane upper bound.
+			if witCount > maxWitnessItemsPerInput {
+				returnScriptBuffers()
+				str := fmt.Sprintf("too many witness items to fit "+
+					"into max message size [count %d, max %d]",
+					witCount, maxWitnessItemsPerInput)
+				return messageError("MsgTx.BtcDecode", str)
+			}
+
+			// Then for witCount number of stack items, each item
+			// has a varint length prefix, followed by the witness
+			// item itself.
+			txin.Witness = make([][]byte, witCount)
+			for j := uint64(0); j < witCount; j++ {
+				txin.Witness[j], err = readScript(r, pver,
+					maxWitnessItemSize, "script witness item")
+				if err != nil {
+					returnScriptBuffers()
+					return err
+				}
+				totalScriptSize += uint64(len(txin.Witness[j]))
+			}
+		}
 	}
 
 	msg.LockTime, err = binarySerializer.Uint32(r, littleEndian)
@@ -483,6 +609,25 @@ func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 
 		// Return the temporary script buffer to the pool.
 		scriptPool.Return(signatureScript)
+
+		for j := 0; j < len(msg.TxIn[i].Witness); j++ {
+			// Copy each item within the witness stack for this
+			// input into the contiguous buffer at the appropriate
+			// offset.
+			witnessElem := msg.TxIn[i].Witness[j]
+			copy(scripts[offset:], witnessElem)
+
+			// Reset the witness item within the stack to the slice
+			// of the contiguous buffer where the witness lives.
+			witnessElemSize := uint64(len(witnessElem))
+			end := offset + witnessElemSize
+			msg.TxIn[i].Witness[j] = scripts[offset:end:end]
+			offset += witnessElemSize
+
+			// Return the temporary buffer used for the witness stack
+			// item to the pool.
+			scriptPool.Return(witnessElem)
+		}
 	}
 	for i := 0; i < len(msg.TxOut); i++ {
 		// Copy the public key script into the contiguous buffer at the
@@ -506,8 +651,8 @@ func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 
 // Deserialize decodes a transaction from r into the receiver using a format
 // that is suitable for long-term storage such as a database while respecting
-// the Version field in the transaction.  This function differs from BchDecode
-// in that BchDecode decodes from the bitcoin wire protocol as it was sent
+// the Version field in the transaction.  This function differs from BtcDecode
+// in that BtcDecode decodes from the bitcoin wire protocol as it was sent
 // across the network.  The wire encoding can technically differ depending on
 // the protocol version and doesn't even really need to match the format of a
 // stored transaction at all.  As of the time this comment was written, the
@@ -517,18 +662,44 @@ func (msg *MsgTx) BchDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 func (msg *MsgTx) Deserialize(r io.Reader) error {
 	// At the current time, there is no difference between the wire encoding
 	// at protocol version 0 and the stable long-term storage format.  As
-	// a result, make use of BchDecode.
-	return msg.BchDecode(r, 0, BaseEncoding)
+	// a result, make use of BtcDecode.
+	return msg.BtcDecode(r, 0, WitnessEncoding)
 }
 
-// BchEncode encodes the receiver to w using the bitcoin protocol encoding.
+// DeserializeNoWitness decodes a transaction from r into the receiver, where
+// the transaction encoding format within r MUST NOT utilize the new
+// serialization format created to encode transaction bearing witness data
+// within inputs.
+func (msg *MsgTx) DeserializeNoWitness(r io.Reader) error {
+	return msg.BtcDecode(r, 0, BaseEncoding)
+}
+
+// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 // See Serialize for encoding transactions to be stored to disk, such as in a
 // database, as opposed to encoding transactions for the wire.
-func (msg *MsgTx) BchEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	err := binarySerializer.PutUint32(w, littleEndian, uint32(msg.Version))
 	if err != nil {
 		return err
+	}
+
+	// If the encoding version is set to WitnessEncoding, and the Flags
+	// field for the MsgTx aren't 0x00, then this indicates the transaction
+	// is to be encoded using the new witness inclusionary structure
+	// defined in BIP0144.
+	doWitness := enc == WitnessEncoding && msg.HasWitness()
+	if doWitness {
+		// After the txn's Version field, we include two additional
+		// bytes specific to the witness encoding. The first byte is an
+		// always 0x00 marker byte, which allows decoders to
+		// distinguish a serialized transaction with witnesses from a
+		// regular (legacy) one. The second byte is the Flag field,
+		// which at the moment is always 0x01, but may be extended in
+		// the future to accommodate auxiliary non-committed fields.
+		if _, err := w.Write(witessMarkerBytes); err != nil {
+			return err
+		}
 	}
 
 	count := uint64(len(msg.TxIn))
@@ -557,12 +728,36 @@ func (msg *MsgTx) BchEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 		}
 	}
 
+	// If this transaction is a witness transaction, and the witness
+	// encoded is desired, then encode the witness for each of the inputs
+	// within the transaction.
+	if doWitness {
+		for _, ti := range msg.TxIn {
+			err = writeTxWitness(w, pver, msg.Version, ti.Witness)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return binarySerializer.PutUint32(w, littleEndian, msg.LockTime)
+}
+
+// HasWitness returns false if none of the inputs within the transaction
+// contain witness data, true false otherwise.
+func (msg *MsgTx) HasWitness() bool {
+	for _, txIn := range msg.TxIn {
+		if len(txIn.Witness) != 0 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Serialize encodes the transaction to w using a format that suitable for
 // long-term storage such as a database while respecting the Version field in
-// the transaction.  This function differs from BchEncode in that BchEncode
+// the transaction.  This function differs from BtcEncode in that BtcEncode
 // encodes the transaction to the bitcoin wire protocol in order to be sent
 // across the network.  The wire encoding can technically differ depending on
 // the protocol version and doesn't even really need to match the format of a
@@ -573,8 +768,20 @@ func (msg *MsgTx) BchEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 func (msg *MsgTx) Serialize(w io.Writer) error {
 	// At the current time, there is no difference between the wire encoding
 	// at protocol version 0 and the stable long-term storage format.  As
-	// a result, make use of BchEncode.
-	return msg.BchEncode(w, 0, BaseEncoding)
+	// a result, make use of BtcEncode.
+	//
+	// Passing a encoding type of WitnessEncoding to BtcEncode for MsgTx
+	// indicates that the transaction's witnesses (if any) should be
+	// serialized according to the new serialization structure defined in
+	// BIP0144.
+	return msg.BtcEncode(w, 0, WitnessEncoding)
+}
+
+// SerializeNoWitness encodes the transaction to w in an identical manner to
+// Serialize, however even if the source transaction has inputs with witness
+// data, the old serialization format will still be used.
+func (msg *MsgTx) SerializeNoWitness(w io.Writer) error {
+	return msg.BtcEncode(w, 0, BaseEncoding)
 }
 
 // baseSize returns the serialized size of the transaction without accounting
@@ -599,6 +806,25 @@ func (msg *MsgTx) baseSize() int {
 // SerializeSize returns the number of bytes it would take to serialize the
 // the transaction.
 func (msg *MsgTx) SerializeSize() int {
+	n := msg.baseSize()
+
+	if msg.HasWitness() {
+		// The marker, and flag fields take up two additional bytes.
+		n += 2
+
+		// Additionally, factor in the serialized size of each of the
+		// witnesses for each txin.
+		for _, txin := range msg.TxIn {
+			n += txin.Witness.SerializeSize()
+		}
+	}
+
+	return n
+}
+
+// SerializeSizeStripped returns the number of bytes it would take to serialize
+// the transaction, excluding any included witness data.
+func (msg *MsgTx) SerializeSizeStripped() int {
 	return msg.baseSize()
 }
 
@@ -611,7 +837,7 @@ func (msg *MsgTx) Command() string {
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver.  This is part of the Message interface implementation.
 func (msg *MsgTx) MaxPayloadLength(pver uint32) uint32 {
-	return MaxBlockPayload()
+	return MaxBlockPayload
 }
 
 // PkScriptLocs returns a slice containing the start of each public key script
@@ -632,6 +858,12 @@ func (msg *MsgTx) PkScriptLocs() []int {
 	// input.
 	n := 4 + VarIntSerializeSize(uint64(len(msg.TxIn))) +
 		VarIntSerializeSize(uint64(numTxOut))
+
+	// If this transaction has a witness input, the an additional two bytes
+	// for the marker, and flag byte need to be taken into account.
+	if len(msg.TxIn) > 0 && msg.TxIn[0].Witness != nil {
+		n += 2
+	}
 
 	for _, txIn := range msg.TxIn {
 		n += txIn.SerializeSize()
@@ -726,7 +958,7 @@ func readTxIn(r io.Reader, pver uint32, version int32, ti *TxIn) error {
 		return err
 	}
 
-	ti.SignatureScript, err = readScript(r, pver, maxTxInPerMessage(),
+	ti.SignatureScript, err = readScript(r, pver, MaxMessagePayload,
 		"transaction input signature script")
 	if err != nil {
 		return err
@@ -759,7 +991,7 @@ func readTxOut(r io.Reader, pver uint32, version int32, to *TxOut) error {
 		return err
 	}
 
-	to.PkScript, err = readScript(r, pver, maxMessagePayload(),
+	to.PkScript, err = readScript(r, pver, MaxMessagePayload,
 		"transaction output public key script")
 	return err
 }
@@ -776,4 +1008,20 @@ func WriteTxOut(w io.Writer, pver uint32, version int32, to *TxOut) error {
 	}
 
 	return WriteVarBytes(w, pver, to.PkScript)
+}
+
+// writeTxWitness encodes the bitcoin protocol encoding for a transaction
+// input's witness into to w.
+func writeTxWitness(w io.Writer, pver uint32, version int32, wit [][]byte) error {
+	err := WriteVarInt(w, pver, uint64(len(wit)))
+	if err != nil {
+		return err
+	}
+	for _, item := range wit {
+		err = WriteVarBytes(w, pver, item)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

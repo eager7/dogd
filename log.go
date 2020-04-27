@@ -7,7 +7,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/eager7/dogd/bchrpc"
 	"os"
 	"path/filepath"
 
@@ -49,7 +48,7 @@ var (
 	// backendLog is the logging backend used to create all subsystem loggers.
 	// The backend must not be used before the log rotator has been initialized,
 	// or data races and/or nil pointer dereferences will occur.
-	backendLog = bchlog.NewBackend(logWriter{})
+	backendLog = btclog.NewBackend(logWriter{})
 
 	// logRotator is one of the logging outputs.  It should be closed on
 	// application shutdown.
@@ -59,7 +58,7 @@ var (
 	amgrLog = backendLog.Logger("AMGR")
 	cmgrLog = backendLog.Logger("CMGR")
 	bcdbLog = backendLog.Logger("BCDB")
-	bchdLog = backendLog.Logger("BCHD")
+	btcdLog = backendLog.Logger("BTCD")
 	chanLog = backendLog.Logger("CHAN")
 	discLog = backendLog.Logger("DISC")
 	indxLog = backendLog.Logger("INDX")
@@ -70,7 +69,6 @@ var (
 	srvrLog = backendLog.Logger("SRVR")
 	syncLog = backendLog.Logger("SYNC")
 	txmpLog = backendLog.Logger("TXMP")
-	grpcLog = backendLog.Logger("GRPC")
 )
 
 // Initialize package-global logger variables.
@@ -86,16 +84,15 @@ func init() {
 	txscript.UseLogger(scrpLog)
 	netsync.UseLogger(syncLog)
 	mempool.UseLogger(txmpLog)
-	bchrpc.UseLogger(grpcLog)
 }
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.
-var subsystemLoggers = map[string]bchlog.Logger{
+var subsystemLoggers = map[string]btclog.Logger{
 	"ADXR": adxrLog,
 	"AMGR": amgrLog,
 	"CMGR": cmgrLog,
 	"BCDB": bcdbLog,
-	"BCHD": bchdLog,
+	"BTCD": btcdLog,
 	"CHAN": chanLog,
 	"DISC": discLog,
 	"INDX": indxLog,
@@ -106,7 +103,6 @@ var subsystemLoggers = map[string]bchlog.Logger{
 	"SRVR": srvrLog,
 	"SYNC": syncLog,
 	"TXMP": txmpLog,
-	"GRPC": grpcLog,
 }
 
 // initLogRotator initializes the logging rotater to write logs to logFile and
@@ -139,7 +135,7 @@ func setLogLevel(subsystemID string, logLevel string) {
 	}
 
 	// Defaults to info if the log level is invalid.
-	level, _ := bchlog.LevelFromString(logLevel)
+	level, _ := btclog.LevelFromString(logLevel)
 	logger.SetLevel(level)
 }
 

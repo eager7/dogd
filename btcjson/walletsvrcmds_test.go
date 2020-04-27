@@ -62,6 +62,19 @@ func TestWalletSvrCmds(t *testing.T) {
 			},
 		},
 		{
+			name: "addwitnessaddress",
+			newCmd: func() (interface{}, error) {
+				return btcjson.NewCmd("addwitnessaddress", "1address")
+			},
+			staticCmd: func() interface{} {
+				return btcjson.NewAddWitnessAddressCmd("1address")
+			},
+			marshalled: `{"jsonrpc":"1.0","method":"addwitnessaddress","params":["1address"],"id":1}`,
+			unmarshalled: &btcjson.AddWitnessAddressCmd{
+				Address: "1address",
+			},
+		},
+		{
 			name: "createmultisig",
 			newCmd: func() (interface{}, error) {
 				return btcjson.NewCmd("createmultisig", 2, []string{"031234", "035678"})
@@ -113,6 +126,34 @@ func TestWalletSvrCmds(t *testing.T) {
 			marshalled: `{"jsonrpc":"1.0","method":"estimatefee","params":[6],"id":1}`,
 			unmarshalled: &btcjson.EstimateFeeCmd{
 				NumBlocks: 6,
+			},
+		},
+		{
+			name: "estimatesmartfee - no mode",
+			newCmd: func() (interface{}, error) {
+				return btcjson.NewCmd("estimatesmartfee", 6)
+			},
+			staticCmd: func() interface{} {
+				return btcjson.NewEstimateSmartFeeCmd(6, nil)
+			},
+			marshalled: `{"jsonrpc":"1.0","method":"estimatesmartfee","params":[6],"id":1}`,
+			unmarshalled: &btcjson.EstimateSmartFeeCmd{
+				ConfTarget:   6,
+				EstimateMode: &btcjson.EstimateModeConservative,
+			},
+		},
+		{
+			name: "estimatesmartfee - economical mode",
+			newCmd: func() (interface{}, error) {
+				return btcjson.NewCmd("estimatesmartfee", 6, btcjson.EstimateModeEconomical)
+			},
+			staticCmd: func() interface{} {
+				return btcjson.NewEstimateSmartFeeCmd(6, &btcjson.EstimateModeEconomical)
+			},
+			marshalled: `{"jsonrpc":"1.0","method":"estimatesmartfee","params":[6,"ECONOMICAL"],"id":1}`,
+			unmarshalled: &btcjson.EstimateSmartFeeCmd{
+				ConfTarget:   6,
+				EstimateMode: &btcjson.EstimateModeEconomical,
 			},
 		},
 		{
@@ -999,33 +1040,31 @@ func TestWalletSvrCmds(t *testing.T) {
 				return btcjson.NewCmd("sendtoaddress", "1Address", 0.5)
 			},
 			staticCmd: func() interface{} {
-				return btcjson.NewSendToAddressCmd("1Address", 0.5, nil, nil, nil)
+				return btcjson.NewSendToAddressCmd("1Address", 0.5, nil, nil)
 			},
 			marshalled: `{"jsonrpc":"1.0","method":"sendtoaddress","params":["1Address",0.5],"id":1}`,
 			unmarshalled: &btcjson.SendToAddressCmd{
-				Address:               "1Address",
-				Amount:                0.5,
-				Comment:               nil,
-				CommentTo:             nil,
-				SubtractFeeFromAmount: nil,
+				Address:   "1Address",
+				Amount:    0.5,
+				Comment:   nil,
+				CommentTo: nil,
 			},
 		},
 		{
 			name: "sendtoaddress optional1",
 			newCmd: func() (interface{}, error) {
-				return btcjson.NewCmd("sendtoaddress", "1Address", 0.5, "comment", "commentto", true)
+				return btcjson.NewCmd("sendtoaddress", "1Address", 0.5, "comment", "commentto")
 			},
 			staticCmd: func() interface{} {
 				return btcjson.NewSendToAddressCmd("1Address", 0.5, btcjson.String("comment"),
-					btcjson.String("commentto"), btcjson.Bool(true))
+					btcjson.String("commentto"))
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendtoaddress","params":["1Address",0.5,"comment","commentto",true],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendtoaddress","params":["1Address",0.5,"comment","commentto"],"id":1}`,
 			unmarshalled: &btcjson.SendToAddressCmd{
-				Address:               "1Address",
-				Amount:                0.5,
-				Comment:               btcjson.String("comment"),
-				CommentTo:             btcjson.String("commentto"),
-				SubtractFeeFromAmount: btcjson.Bool(true),
+				Address:   "1Address",
+				Amount:    0.5,
+				Comment:   btcjson.String("comment"),
+				CommentTo: btcjson.String("commentto"),
 			},
 		},
 		{
@@ -1088,7 +1127,7 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "signrawtransaction optional1",
 			newCmd: func() (interface{}, error) {
-				return btcjson.NewCmd("signrawtransaction", "001122", `[{"txid":"123","vout":1,"scriptPubKey":"00","redeemScript":"01","amount":0.0001}]`)
+				return btcjson.NewCmd("signrawtransaction", "001122", `[{"txid":"123","vout":1,"scriptPubKey":"00","redeemScript":"01"}]`)
 			},
 			staticCmd: func() interface{} {
 				txInputs := []btcjson.RawTxInput{
@@ -1097,13 +1136,12 @@ func TestWalletSvrCmds(t *testing.T) {
 						Vout:         1,
 						ScriptPubKey: "00",
 						RedeemScript: "01",
-						Amount:       0.0001,
 					},
 				}
 
 				return btcjson.NewSignRawTransactionCmd("001122", &txInputs, nil, nil)
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"signrawtransaction","params":["001122",[{"txid":"123","vout":1,"scriptPubKey":"00","redeemScript":"01","amount":0.0001}]],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"signrawtransaction","params":["001122",[{"txid":"123","vout":1,"scriptPubKey":"00","redeemScript":"01"}]],"id":1}`,
 			unmarshalled: &btcjson.SignRawTransactionCmd{
 				RawTx: "001122",
 				Inputs: &[]btcjson.RawTxInput{
@@ -1112,7 +1150,6 @@ func TestWalletSvrCmds(t *testing.T) {
 						Vout:         1,
 						ScriptPubKey: "00",
 						RedeemScript: "01",
-						Amount:       0.0001,
 					},
 				},
 				PrivKeys: nil,
@@ -1201,7 +1238,7 @@ func TestWalletSvrCmds(t *testing.T) {
 	for i, test := range tests {
 		// Marshal the command as created by the new static command
 		// creation function.
-		marshalled, err := btcjson.MarshalCmd("1.0", testID, test.staticCmd())
+		marshalled, err := btcjson.MarshalCmd(testID, test.staticCmd())
 		if err != nil {
 			t.Errorf("MarshalCmd #%d (%s) unexpected error: %v", i,
 				test.name, err)
@@ -1225,7 +1262,7 @@ func TestWalletSvrCmds(t *testing.T) {
 
 		// Marshal the command as created by the generic new command
 		// creation function.
-		marshalled, err = btcjson.MarshalCmd("1.0", testID, cmd)
+		marshalled, err = btcjson.MarshalCmd(testID, cmd)
 		if err != nil {
 			t.Errorf("MarshalCmd #%d (%s) unexpected error: %v", i,
 				test.name, err)

@@ -68,7 +68,7 @@ func (b *addrIndexBucket) printLevels(addrKey [addrKeySize]byte) string {
 		if !bytes.Equal(k[:levelOffset], addrKey[:]) {
 			continue
 		}
-		level := k[levelOffset]
+		level := uint8(k[levelOffset])
 		if level > highestLevel {
 			highestLevel = level
 		}
@@ -105,7 +105,7 @@ func (b *addrIndexBucket) sanityCheck(addrKey [addrKeySize]byte, expectedTotal i
 		if !bytes.Equal(k[:levelOffset], addrKey[:]) {
 			continue
 		}
-		level := k[levelOffset]
+		level := uint8(k[levelOffset])
 		if level > highestLevel {
 			highestLevel = level
 		}

@@ -5,8 +5,6 @@
 package indexers
 
 import (
-	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -22,7 +20,7 @@ type blockProgressLogger struct {
 	receivedLogTx     int64
 	lastBlockLogTime  time.Time
 
-	subsystemLogger bchlog.Logger
+	subsystemLogger btclog.Logger
 	progressAction  string
 	sync.Mutex
 }
@@ -31,7 +29,7 @@ type blockProgressLogger struct {
 // The progress message is templated as follows:
 //  {progressAction} {numProcessed} {blocks|block} in the last {timePeriod}
 //  ({numTxs}, height {lastBlockHeight}, {lastBlockTimeStamp})
-func newBlockProgressLogger(progressMessage string, logger bchlog.Logger) *blockProgressLogger {
+func newBlockProgressLogger(progressMessage string, logger btclog.Logger) *blockProgressLogger {
 	return &blockProgressLogger{
 		lastBlockLogTime: time.Now(),
 		progressAction:   progressMessage,
@@ -42,7 +40,7 @@ func newBlockProgressLogger(progressMessage string, logger bchlog.Logger) *block
 // LogBlockHeight logs a new block height as an information message to show
 // progress to the user. In order to prevent spam, it limits logging to one
 // message every 10 seconds with duration and totals included.
-func (b *blockProgressLogger) LogBlockHeight(block *bchutil.Block, bestHeight uint64) {
+func (b *blockProgressLogger) LogBlockHeight(block *dogutil.Block) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -68,27 +66,9 @@ func (b *blockProgressLogger) LogBlockHeight(block *bchutil.Block, bestHeight ui
 	if b.receivedLogTx == 1 {
 		txStr = "transaction"
 	}
-
-	progress := float64(0.0)
-
-	if bestHeight > 0 {
-		progress = math.Min(float64(block.Height())/float64(bestHeight), 1.0) * 100
-	}
-
-	var heightStr string
-
-	if uint64(block.Height()) >= bestHeight {
-		// sync is up to date so shorten the height output
-		heightStr = fmt.Sprintf("%d (%.2f%%)", block.Height(), progress)
-	} else {
-		// sync is partial and in progress
-		heightStr = fmt.Sprintf("%d/%d (%.2f%%)", block.Height(),
-			bestHeight, progress)
-	}
-
-	b.subsystemLogger.Infof("%s %d %s in the last %s (%d %s, height %s, %s)",
+	b.subsystemLogger.Infof("%s %d %s in the last %s (%d %s, height %d, %s)",
 		b.progressAction, b.receivedLogBlocks, blockStr, tDuration, b.receivedLogTx,
-		txStr, heightStr, block.MsgBlock().Header.Timestamp)
+		txStr, block.Height(), block.MsgBlock().Header.Timestamp)
 
 	b.receivedLogBlocks = 0
 	b.receivedLogTx = 0

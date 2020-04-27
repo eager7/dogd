@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/database"
 	"github.com/eager7/dogd/wire"
 )
@@ -485,9 +484,9 @@ func TestUtxoSerialization(t *testing.T) {
 		}
 
 		// Deserialize to a utxo entry.
-		utxoEntry, err := DeserializeUtxoEntry(test.serialized)
+		utxoEntry, err := deserializeUtxoEntry(test.serialized)
 		if err != nil {
-			t.Errorf("DeserializeUtxoEntry #%d (%s) unexpected "+
+			t.Errorf("deserializeUtxoEntry #%d (%s) unexpected "+
 				"error: %v", i, test.name, err)
 			continue
 		}
@@ -495,7 +494,7 @@ func TestUtxoSerialization(t *testing.T) {
 		// The deserialized entry must not be marked spent since unspent
 		// entries are not serialized.
 		if utxoEntry.IsSpent() {
-			t.Errorf("DeserializeUtxoEntry #%d (%s) output should "+
+			t.Errorf("deserializeUtxoEntry #%d (%s) output should "+
 				"not be marked spent", i, test.name)
 			continue
 		}
@@ -503,120 +502,28 @@ func TestUtxoSerialization(t *testing.T) {
 		// Ensure the deserialized entry has the same properties as the
 		// ones in the test entry.
 		if utxoEntry.Amount() != test.entry.Amount() {
-			t.Errorf("DeserializeUtxoEntry #%d (%s) mismatched "+
+			t.Errorf("deserializeUtxoEntry #%d (%s) mismatched "+
 				"amounts: got %d, want %d", i, test.name,
 				utxoEntry.Amount(), test.entry.Amount())
 			continue
 		}
 
 		if !bytes.Equal(utxoEntry.PkScript(), test.entry.PkScript()) {
-			t.Errorf("DeserializeUtxoEntry #%d (%s) mismatched "+
+			t.Errorf("deserializeUtxoEntry #%d (%s) mismatched "+
 				"scripts: got %x, want %x", i, test.name,
 				utxoEntry.PkScript(), test.entry.PkScript())
 			continue
 		}
 		if utxoEntry.BlockHeight() != test.entry.BlockHeight() {
-			t.Errorf("DeserializeUtxoEntry #%d (%s) mismatched "+
+			t.Errorf("deserializeUtxoEntry #%d (%s) mismatched "+
 				"block height: got %d, want %d", i, test.name,
 				utxoEntry.BlockHeight(), test.entry.BlockHeight())
 			continue
 		}
 		if utxoEntry.IsCoinBase() != test.entry.IsCoinBase() {
-			t.Errorf("DeserializeUtxoEntry #%d (%s) mismatched "+
+			t.Errorf("deserializeUtxoEntry #%d (%s) mismatched "+
 				"coinbase flag: got %v, want %v", i, test.name,
 				utxoEntry.IsCoinBase(), test.entry.IsCoinBase())
-			continue
-		}
-	}
-}
-
-// TestUtxoCommitmentFormatDeserialization ensures deserializing unspent
-// trasaction output entries from the commitment format works as expected.
-func TestUtxoCommitmentFormatDeserialization(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		entry      *UtxoEntry
-		outpoint   *wire.OutPoint
-		serialized []byte
-	}{
-		// From tx in main blockchain:
-		// 0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098:0
-		{
-			name: "height 1, coinbase",
-			entry: &UtxoEntry{
-				amount:      5000000000,
-				pkScript:    hexToBytes("410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac"),
-				blockHeight: 1,
-				packedFlags: tfCoinBase,
-			},
-			outpoint:   wire.NewOutPoint(newHashFromStr("0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098"), 0),
-			serialized: hexToBytes("982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e000000000100000100f2052a0100000043000000410496b538e853519c726a2c91e61ec11600ae1390813a627c66fb8be7947be63c52da7589379515d4e0a604f8141781e62294721166bf621e73a82cbf2342c858eeac"),
-		},
-		// From tx in main blockchain:
-		// 8131ffb0a2c945ecaf9b9063e59558784f9c3a74741ce6ae2a18d0571dac15bb:1
-		{
-			name: "height 100001, not coinbase",
-			entry: &UtxoEntry{
-				amount:      1000000,
-				pkScript:    hexToBytes("76a914ee8bd501094a7d5ca318da2506de35e1cb025ddc88ac"),
-				blockHeight: 100001,
-				packedFlags: 0,
-			},
-			outpoint:   wire.NewOutPoint(newHashFromStr("8131ffb0a2c945ecaf9b9063e59558784f9c3a74741ce6ae2a18d0571dac15bb"), 1),
-			serialized: hexToBytes("bb15ac1d57d0182aaee61c74743a9c4f785895e563909bafec45c9a2b0ff318101000000a186010040420f00000000001900000076a914ee8bd501094a7d5ca318da2506de35e1cb025ddc88ac"),
-		},
-	}
-
-	for i, test := range tests {
-		// Deserialize to a utxo entry and outpoint.
-		outpoint, utxoEntry, err := deserializeUtxoCommitmentFormat(test.serialized)
-		if err != nil {
-			t.Errorf("deserializeUtxoCommitmentFormat #%d (%s) unexpected "+
-				"error: %v", i, test.name, err)
-			continue
-		}
-
-		// The deserialized entry must not be marked spent since unspent
-		// entries are not serialized.
-		if utxoEntry.IsSpent() {
-			t.Errorf("deserializeUtxoCommitmentFormat #%d (%s) output should "+
-				"not be marked spent", i, test.name)
-			continue
-		}
-
-		// Ensure the deserialized entry has the same properties as the
-		// ones in the test entry.
-		if utxoEntry.Amount() != test.entry.Amount() {
-			t.Errorf("deserializeUtxoCommitmentFormat #%d (%s) mismatched "+
-				"amounts: got %d, want %d", i, test.name,
-				utxoEntry.Amount(), test.entry.Amount())
-			continue
-		}
-
-		if !bytes.Equal(utxoEntry.PkScript(), test.entry.PkScript()) {
-			t.Errorf("deserializeUtxoCommitmentFormat #%d (%s) mismatched "+
-				"scripts: got %x, want %x", i, test.name,
-				utxoEntry.PkScript(), test.entry.PkScript())
-			continue
-		}
-		if utxoEntry.BlockHeight() != test.entry.BlockHeight() {
-			t.Errorf("deserializeUtxoCommitmentFormat #%d (%s) mismatched "+
-				"block height: got %d, want %d", i, test.name,
-				utxoEntry.BlockHeight(), test.entry.BlockHeight())
-			continue
-		}
-		if utxoEntry.IsCoinBase() != test.entry.IsCoinBase() {
-			t.Errorf("deserializeUtxoCommitmentFormat #%d (%s) mismatched "+
-				"coinbase flag: got %v, want %v", i, test.name,
-				utxoEntry.IsCoinBase(), test.entry.IsCoinBase())
-			continue
-		}
-		if outpoint.String() != test.outpoint.String() {
-			t.Errorf("deserializeUtxoCommitmentFormat #%d (%s) mismatched "+
-				"outpoint: got %v, want %v", i, test.name,
-				outpoint.String(), test.outpoint.String())
 			continue
 		}
 	}
@@ -682,15 +589,15 @@ func TestUtxoEntryDeserializeErrors(t *testing.T) {
 	for _, test := range tests {
 		// Ensure the expected error type is returned and the returned
 		// entry is nil.
-		entry, err := DeserializeUtxoEntry(test.serialized)
+		entry, err := deserializeUtxoEntry(test.serialized)
 		if reflect.TypeOf(err) != reflect.TypeOf(test.errType) {
-			t.Errorf("DeserializeUtxoEntry (%s): expected error "+
+			t.Errorf("deserializeUtxoEntry (%s): expected error "+
 				"type does not match - got %T, want %T",
 				test.name, err, test.errType)
 			continue
 		}
 		if entry != nil {
-			t.Errorf("DeserializeUtxoEntry (%s): returned entry "+
+			t.Errorf("deserializeUtxoEntry (%s): returned entry "+
 				"is not nil", test.name)
 			continue
 		}
@@ -804,109 +711,6 @@ func TestBestChainStateDeserializeErrors(t *testing.T) {
 			tderr := test.errType.(database.Error)
 			if derr.ErrorCode != tderr.ErrorCode {
 				t.Errorf("deserializeBestChainState (%s): "+
-					"wrong  error code got: %v, want: %v",
-					test.name, derr.ErrorCode,
-					tderr.ErrorCode)
-				continue
-			}
-		}
-	}
-}
-
-// TestUtxoConsistencySerialization ensures serializing and deserializing the
-// utxo consistency statuses works as expected.
-func TestUtxoConsistencySerialization(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name       string
-		statusCode byte
-		statusHash *chainhash.Hash
-		serialized []byte
-	}{
-		{
-			name:       "consistent",
-			statusCode: ucsConsistent,
-			statusHash: newHashFromStr("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"),
-			serialized: hexToBytes("016fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000"),
-		},
-		{
-			name:       "flushongoing",
-			statusCode: ucsFlushOngoing,
-			statusHash: newHashFromStr("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"),
-			serialized: hexToBytes("026fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000"),
-		},
-	}
-	for i, test := range tests {
-		// Ensure the state serializes to the expected value.
-		gotBytes := serializeUtxoStateConsistency(test.statusCode, test.statusHash)
-		if !bytes.Equal(gotBytes, test.serialized) {
-			t.Errorf("serializeUtxoStateConsistency #%d (%s): mismatched "+
-				"bytes - got %x, want %x", i, test.name,
-				gotBytes, test.serialized)
-			continue
-		}
-		// Ensure the serialized bytes are decoded back to the expected
-		// state.
-		code, hash, err := deserializeUtxoStateConsistency(test.serialized)
-		if err != nil {
-			t.Errorf("deserializeUtxoStateConsistency #%d (%s) "+
-				"unexpected error: %v", i, test.name, err)
-			continue
-		}
-		if code != test.statusCode {
-			t.Errorf("deserializeUtxoStateConsistency #%d (%s) "+
-				"mismatched code - got %v, want %v", i,
-				test.name, code, test.statusCode)
-			continue
-		}
-		if !test.statusHash.IsEqual(hash) {
-			t.Errorf("deserializeUtxoStateConsistency #%d (%s) "+
-				"mismatched hash - got %v, want %v", i,
-				test.name, hash, test.statusHash)
-			continue
-		}
-	}
-}
-
-// TestUtxoConsistencyDeserializeErrors performs negative tests against
-// deserializing the utxo consistency status to ensure error paths work as
-// expected.
-func TestUtxoConsistencyDeserializeErrors(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name       string
-		serialized []byte
-		errType    error
-	}{
-		{
-			name:       "nothing serialized",
-			serialized: hexToBytes(""),
-			errType:    database.Error{ErrorCode: database.ErrCorruption},
-		},
-		{
-			name:       "short data in hash",
-			serialized: hexToBytes("0100"),
-			errType:    database.Error{ErrorCode: database.ErrCorruption},
-		},
-		{
-			name:       "inexistent code",
-			serialized: hexToBytes("036fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000"),
-			errType:    database.Error{ErrorCode: database.ErrCorruption},
-		},
-	}
-	for _, test := range tests {
-		// Ensure the expected error type and code is returned.
-		_, _, err := deserializeUtxoStateConsistency(test.serialized)
-		if reflect.TypeOf(err) != reflect.TypeOf(test.errType) {
-			t.Errorf("deserializeUtxoStateConsistency (%s): expected "+
-				"error type does not match - got %T, want %T",
-				test.name, err, test.errType)
-			continue
-		}
-		if derr, ok := err.(database.Error); ok {
-			tderr := test.errType.(database.Error)
-			if derr.ErrorCode != tderr.ErrorCode {
-				t.Errorf("deserializeUtxoStateConsistency (%s): "+
 					"wrong  error code got: %v, want: %v",
 					test.name, derr.ErrorCode,
 					tderr.ErrorCode)

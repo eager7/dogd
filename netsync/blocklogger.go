@@ -5,12 +5,9 @@
 package netsync
 
 import (
-	"fmt"
-	"math"
 	"sync"
 	"time"
 
-	"github.com/eager7/dogd/blockchain"
 	"github.com/eager7/doglog"
 	"github.com/eager7/dogutil"
 )
@@ -23,7 +20,7 @@ type blockProgressLogger struct {
 	receivedLogTx     int64
 	lastBlockLogTime  time.Time
 
-	subsystemLogger bchlog.Logger
+	subsystemLogger btclog.Logger
 	progressAction  string
 	sync.Mutex
 }
@@ -32,7 +29,7 @@ type blockProgressLogger struct {
 // The progress message is templated as follows:
 //  {progressAction} {numProcessed} {blocks|block} in the last {timePeriod}
 //  ({numTxs}, height {lastBlockHeight}, {lastBlockTimeStamp})
-func newBlockProgressLogger(progressMessage string, logger bchlog.Logger) *blockProgressLogger {
+func newBlockProgressLogger(progressMessage string, logger btclog.Logger) *blockProgressLogger {
 	return &blockProgressLogger{
 		lastBlockLogTime: time.Now(),
 		progressAction:   progressMessage,
@@ -43,7 +40,7 @@ func newBlockProgressLogger(progressMessage string, logger bchlog.Logger) *block
 // LogBlockHeight logs a new block height as an information message to show
 // progress to the user. In order to prevent spam, it limits logging to one
 // message every 10 seconds with duration and totals included.
-func (b *blockProgressLogger) LogBlockHeight(block *bchutil.Block, bestHeight uint64, chain *blockchain.BlockChain) {
+func (b *blockProgressLogger) LogBlockHeight(block *dogutil.Block) {
 	b.Lock()
 	defer b.Unlock()
 
@@ -69,31 +66,9 @@ func (b *blockProgressLogger) LogBlockHeight(block *bchutil.Block, bestHeight ui
 	if b.receivedLogTx == 1 {
 		txStr = "transaction"
 	}
-
-	progress := float64(0.0)
-
-	if bestHeight > 0 {
-		progress = math.Min(float64(block.Height())/float64(bestHeight), 1.0) * 100
-	}
-
-	var heightStr string
-
-	if bestHeight == 0 {
-		// We don't have a best height due to no sync peer. Don't log the percentage.
-		heightStr = fmt.Sprintf("%d", block.Height())
-	} else if uint64(block.Height()) >= bestHeight {
-		// sync is up to date so shorten the height output
-		heightStr = fmt.Sprintf("%d (%.2f%%)", block.Height(), progress)
-	} else {
-		// sync is partial and in progress
-		heightStr = fmt.Sprintf("%d/%d (%.2f%%)", block.Height(),
-			bestHeight, progress)
-	}
-
-	cacheSizeStr := fmt.Sprintf("~%d MiB", chain.CachedStateSize()/1024/1024)
-	b.subsystemLogger.Infof("%s %d %s in %s (%d %s, height %s, %s, %s cache)",
+	b.subsystemLogger.Infof("%s %d %s in the last %s (%d %s, height %d, %s)",
 		b.progressAction, b.receivedLogBlocks, blockStr, tDuration, b.receivedLogTx,
-		txStr, heightStr, block.MsgBlock().Header.Timestamp, cacheSizeStr)
+		txStr, block.Height(), block.MsgBlock().Header.Timestamp)
 
 	b.receivedLogBlocks = 0
 	b.receivedLogTx = 0

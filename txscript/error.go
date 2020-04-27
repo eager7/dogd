@@ -31,7 +31,7 @@ const (
 	ErrInvalidIndex
 
 	// ErrUnsupportedAddress is returned when a concrete type that
-	// implements a bchutil.Address is not a supported type.
+	// implements a dogutil.Address is not a supported type.
 	ErrUnsupportedAddress
 
 	// ErrNotMultisigScript is returned from CalcMultiSigStats when the
@@ -109,14 +109,6 @@ const (
 	// input may fail with this code.
 	ErrNumberTooBig
 
-	// ErrNumberTooSmall is returned when the argument for an opcode that
-	// expects numeric input is smaller than the expected maximum number of
-	// bytes.  For the most part, opcodes that deal with stack manipulation
-	// via offsets, arithmetic, numeric comparison, and boolean logic are
-	// those that this applies to.  However, any opcode that expects numeric
-	// input may fail with this code.
-	ErrNumberTooSmall
-
 	// --------------------------------------------
 	// Failures related to verification operations.
 	// --------------------------------------------
@@ -144,11 +136,6 @@ const (
 	// evaluate to true.
 	ErrCheckMultiSigVerify
 
-	// ErrCheckDataSigVerify is returned when OP_CHECKDATASIGVERIFY is
-	// encountered in a script and the top item on the data stack does not
-	// evaluate to true.
-	ErrCheckDataSigVerify
-
 	// --------------------------------------------
 	// Failures related to improper use of opcodes.
 	// --------------------------------------------
@@ -175,10 +162,6 @@ const (
 	// an OP_IF or OP_NOTIF was previously encountered.
 	ErrUnbalancedConditional
 
-	// ErrInvalidInputLength is returned when an input to an opcode is not
-	// the correct length as required by that opcode.
-	ErrInvalidInputLength
-
 	// ---------------------------------
 	// Failures related to malleability.
 	// ---------------------------------
@@ -187,11 +170,6 @@ const (
 	// is set and the script contains push operations that do not use
 	// the minimal opcode required.
 	ErrMinimalData
-
-	// ErrMinimalIf is returned when the ScriptVerifyMinimalIf flag
-	// is set and the script contains an if or notif that does not use
-	// the minimal if encoding.
-	ErrMinimalIf
 
 	// ErrInvalidSigHashType is returned when a signature hash type is not
 	// one of the supported types.
@@ -293,6 +271,15 @@ const (
 	// operations.
 	ErrNullFail
 
+	// ErrWitnessMalleated is returned if ScriptVerifyWitness is set and a
+	// native p2wsh program is encountered which has a non-empty sigScript.
+	ErrWitnessMalleated
+
+	// ErrWitnessMalleatedP2SH is returned if ScriptVerifyWitness if set
+	// and the validation logic for nested p2sh encounters a sigScript
+	// which isn't *exactyl* a datapush of the witness program.
+	ErrWitnessMalleatedP2SH
+
 	// -------------------------------
 	// Failures related to soft forks.
 	// -------------------------------
@@ -311,14 +298,45 @@ const (
 	// reached.
 	ErrUnsatisfiedLockTime
 
-	// ErrInvalidDummy is returned when the schnorr dummy element is not
-	// encoded correctly. For example, if it has more bytes than necessary
-	// to encode the selected pubkeys.
-	ErrInvalidDummy
+	// ErrMinimalIf is returned if ScriptVerifyWitness is set and the
+	// operand of an OP_IF/OP_NOF_IF are not either an empty vector or
+	// [0x01].
+	ErrMinimalIf
 
-	// ErrInvalidBitCount is returned when the schnorr dummy element does
-	// not contain the correct number of bits.
-	ErrInvalidBitCount
+	// ErrDiscourageUpgradableWitnessProgram is returned if
+	// ScriptVerifyWitness is set and the versino of an executing witness
+	// program is outside the set of currently defined witness program
+	// vesions.
+	ErrDiscourageUpgradableWitnessProgram
+
+	// ----------------------------------------
+	// Failures related to segregated witness.
+	// ----------------------------------------
+
+	// ErrWitnessProgramEmpty is returned if ScriptVerifyWitness is set and
+	// the witness stack itself is empty.
+	ErrWitnessProgramEmpty
+
+	// ErrWitnessProgramMismatch is returned if ScriptVerifyWitness is set
+	// and the witness itself for a p2wkh witness program isn't *exactly* 2
+	// items or if the witness for a p2wsh isn't the sha255 of the witness
+	// script.
+	ErrWitnessProgramMismatch
+
+	// ErrWitnessProgramWrongLength is returned if ScriptVerifyWitness is
+	// set and the length of the witness program violates the length as
+	// dictated by the current witness version.
+	ErrWitnessProgramWrongLength
+
+	// ErrWitnessUnexpected is returned if ScriptVerifyWitness is set and a
+	// transaction includes witness data but doesn't spend an which is a
+	// witness program (nested or native).
+	ErrWitnessUnexpected
+
+	// ErrWitnessPubKeyType is returned if ScriptVerifyWitness is set and
+	// the public key used in either a check-sig or check-multi-sig isn't
+	// serialized in a compressed format.
+	ErrWitnessPubKeyType
 
 	// numErrorCodes is the maximum error code number used in tests.  This
 	// entry MUST be the last entry in the enum.
@@ -327,67 +345,70 @@ const (
 
 // Map of ErrorCode values back to their constant names for pretty printing.
 var errorCodeStrings = map[ErrorCode]string{
-	ErrInternal:                 "ErrInternal",
-	ErrInvalidFlags:             "ErrInvalidFlags",
-	ErrInvalidIndex:             "ErrInvalidIndex",
-	ErrUnsupportedAddress:       "ErrUnsupportedAddress",
-	ErrNotMultisigScript:        "ErrNotMultisigScript",
-	ErrTooManyRequiredSigs:      "ErrTooManyRequiredSigs",
-	ErrTooMuchNullData:          "ErrTooMuchNullData",
-	ErrEarlyReturn:              "ErrEarlyReturn",
-	ErrEmptyStack:               "ErrEmptyStack",
-	ErrEvalFalse:                "ErrEvalFalse",
-	ErrScriptUnfinished:         "ErrScriptUnfinished",
-	ErrInvalidProgramCounter:    "ErrInvalidProgramCounter",
-	ErrScriptTooBig:             "ErrScriptTooBig",
-	ErrElementTooBig:            "ErrElementTooBig",
-	ErrTooManyOperations:        "ErrTooManyOperations",
-	ErrStackOverflow:            "ErrStackOverflow",
-	ErrInvalidPubKeyCount:       "ErrInvalidPubKeyCount",
-	ErrInvalidSignatureCount:    "ErrInvalidSignatureCount",
-	ErrNumberTooBig:             "ErrNumberTooBig",
-	ErrNumberTooSmall:           "ErrNumberTooSmall",
-	ErrVerify:                   "ErrVerify",
-	ErrEqualVerify:              "ErrEqualVerify",
-	ErrNumEqualVerify:           "ErrNumEqualVerify",
-	ErrCheckSigVerify:           "ErrCheckSigVerify",
-	ErrCheckMultiSigVerify:      "ErrCheckMultiSigVerify",
-	ErrCheckDataSigVerify:       "ErrCheckDataSigVerify",
-	ErrDisabledOpcode:           "ErrDisabledOpcode",
-	ErrReservedOpcode:           "ErrReservedOpcode",
-	ErrMalformedPush:            "ErrMalformedPush",
-	ErrInvalidStackOperation:    "ErrInvalidStackOperation",
-	ErrUnbalancedConditional:    "ErrUnbalancedConditional",
-	ErrInvalidInputLength:       "ErrInvalidInputLength",
-	ErrMinimalData:              "ErrMinimalData",
-	ErrMinimalIf:                "ErrMinimalIf",
-	ErrInvalidSigHashType:       "ErrInvalidSigHashType",
-	ErrSigTooShort:              "ErrSigTooShort",
-	ErrSigTooLong:               "ErrSigTooLong",
-	ErrSigInvalidSeqID:          "ErrSigInvalidSeqID",
-	ErrSigInvalidDataLen:        "ErrSigInvalidDataLen",
-	ErrSigMissingSTypeID:        "ErrSigMissingSTypeID",
-	ErrSigMissingSLen:           "ErrSigMissingSLen",
-	ErrSigInvalidSLen:           "ErrSigInvalidSLen",
-	ErrSigInvalidRIntID:         "ErrSigInvalidRIntID",
-	ErrSigZeroRLen:              "ErrSigZeroRLen",
-	ErrSigNegativeR:             "ErrSigNegativeR",
-	ErrSigTooMuchRPadding:       "ErrSigTooMuchRPadding",
-	ErrSigInvalidSIntID:         "ErrSigInvalidSIntID",
-	ErrSigZeroSLen:              "ErrSigZeroSLen",
-	ErrSigNegativeS:             "ErrSigNegativeS",
-	ErrSigTooMuchSPadding:       "ErrSigTooMuchSPadding",
-	ErrSigHighS:                 "ErrSigHighS",
-	ErrNotPushOnly:              "ErrNotPushOnly",
-	ErrSigNullDummy:             "ErrSigNullDummy",
-	ErrPubKeyType:               "ErrPubKeyType",
-	ErrCleanStack:               "ErrCleanStack",
-	ErrNullFail:                 "ErrNullFail",
-	ErrDiscourageUpgradableNOPs: "ErrDiscourageUpgradableNOPs",
-	ErrNegativeLockTime:         "ErrNegativeLockTime",
-	ErrUnsatisfiedLockTime:      "ErrUnsatisfiedLockTime",
-	ErrInvalidDummy:             "ErrInvalidDummy",
-	ErrInvalidBitCount:          "ErrInvalidBitCount",
+	ErrInternal:                           "ErrInternal",
+	ErrInvalidFlags:                       "ErrInvalidFlags",
+	ErrInvalidIndex:                       "ErrInvalidIndex",
+	ErrUnsupportedAddress:                 "ErrUnsupportedAddress",
+	ErrNotMultisigScript:                  "ErrNotMultisigScript",
+	ErrTooManyRequiredSigs:                "ErrTooManyRequiredSigs",
+	ErrTooMuchNullData:                    "ErrTooMuchNullData",
+	ErrEarlyReturn:                        "ErrEarlyReturn",
+	ErrEmptyStack:                         "ErrEmptyStack",
+	ErrEvalFalse:                          "ErrEvalFalse",
+	ErrScriptUnfinished:                   "ErrScriptUnfinished",
+	ErrInvalidProgramCounter:              "ErrInvalidProgramCounter",
+	ErrScriptTooBig:                       "ErrScriptTooBig",
+	ErrElementTooBig:                      "ErrElementTooBig",
+	ErrTooManyOperations:                  "ErrTooManyOperations",
+	ErrStackOverflow:                      "ErrStackOverflow",
+	ErrInvalidPubKeyCount:                 "ErrInvalidPubKeyCount",
+	ErrInvalidSignatureCount:              "ErrInvalidSignatureCount",
+	ErrNumberTooBig:                       "ErrNumberTooBig",
+	ErrVerify:                             "ErrVerify",
+	ErrEqualVerify:                        "ErrEqualVerify",
+	ErrNumEqualVerify:                     "ErrNumEqualVerify",
+	ErrCheckSigVerify:                     "ErrCheckSigVerify",
+	ErrCheckMultiSigVerify:                "ErrCheckMultiSigVerify",
+	ErrDisabledOpcode:                     "ErrDisabledOpcode",
+	ErrReservedOpcode:                     "ErrReservedOpcode",
+	ErrMalformedPush:                      "ErrMalformedPush",
+	ErrInvalidStackOperation:              "ErrInvalidStackOperation",
+	ErrUnbalancedConditional:              "ErrUnbalancedConditional",
+	ErrMinimalData:                        "ErrMinimalData",
+	ErrInvalidSigHashType:                 "ErrInvalidSigHashType",
+	ErrSigTooShort:                        "ErrSigTooShort",
+	ErrSigTooLong:                         "ErrSigTooLong",
+	ErrSigInvalidSeqID:                    "ErrSigInvalidSeqID",
+	ErrSigInvalidDataLen:                  "ErrSigInvalidDataLen",
+	ErrSigMissingSTypeID:                  "ErrSigMissingSTypeID",
+	ErrSigMissingSLen:                     "ErrSigMissingSLen",
+	ErrSigInvalidSLen:                     "ErrSigInvalidSLen",
+	ErrSigInvalidRIntID:                   "ErrSigInvalidRIntID",
+	ErrSigZeroRLen:                        "ErrSigZeroRLen",
+	ErrSigNegativeR:                       "ErrSigNegativeR",
+	ErrSigTooMuchRPadding:                 "ErrSigTooMuchRPadding",
+	ErrSigInvalidSIntID:                   "ErrSigInvalidSIntID",
+	ErrSigZeroSLen:                        "ErrSigZeroSLen",
+	ErrSigNegativeS:                       "ErrSigNegativeS",
+	ErrSigTooMuchSPadding:                 "ErrSigTooMuchSPadding",
+	ErrSigHighS:                           "ErrSigHighS",
+	ErrNotPushOnly:                        "ErrNotPushOnly",
+	ErrSigNullDummy:                       "ErrSigNullDummy",
+	ErrPubKeyType:                         "ErrPubKeyType",
+	ErrCleanStack:                         "ErrCleanStack",
+	ErrNullFail:                           "ErrNullFail",
+	ErrDiscourageUpgradableNOPs:           "ErrDiscourageUpgradableNOPs",
+	ErrNegativeLockTime:                   "ErrNegativeLockTime",
+	ErrUnsatisfiedLockTime:                "ErrUnsatisfiedLockTime",
+	ErrWitnessProgramEmpty:                "ErrWitnessProgramEmpty",
+	ErrWitnessProgramMismatch:             "ErrWitnessProgramMismatch",
+	ErrWitnessProgramWrongLength:          "ErrWitnessProgramWrongLength",
+	ErrWitnessMalleated:                   "ErrWitnessMalleated",
+	ErrWitnessMalleatedP2SH:               "ErrWitnessMalleatedP2SH",
+	ErrWitnessUnexpected:                  "ErrWitnessUnexpected",
+	ErrMinimalIf:                          "ErrMinimalIf",
+	ErrWitnessPubKeyType:                  "ErrWitnessPubKeyType",
+	ErrDiscourageUpgradableWitnessProgram: "ErrDiscourageUpgradableWitnessProgram",
 }
 
 // String returns the ErrorCode as a human-readable name.

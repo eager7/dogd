@@ -41,6 +41,10 @@ const (
 	// maximum allowed size.
 	ErrBlockTooBig
 
+	// ErrBlockWeightTooHigh indicates that the block's computed weight
+	// metric exceeds the maximum allowed value.
+	ErrBlockWeightTooHigh
+
 	// ErrBlockVersionTooOld indicates the block version is too old and is
 	// no longer accepted since the majority of the network has upgraded
 	// to a newer version.
@@ -107,14 +111,6 @@ const (
 	// when serialized.
 	ErrTxTooBig
 
-	// ErrTxTooSmall indicates a transaction is smaller than the minimum
-	// allowed size when serialized.
-	ErrTxTooSmall
-
-	// ErrTxTooManySigOps indicates a transaction exceeds the maximum allowable
-	// number of signature operations.
-	ErrTxTooManySigOps
-
 	// ErrBadTxOutValue indicates an output value for a transaction is
 	// invalid in some way such as being out of range.
 	ErrBadTxOutValue
@@ -129,12 +125,8 @@ const (
 	ErrBadTxInput
 
 	// ErrMissingTxOut indicates a transaction output referenced by an input
-	// that does not exist
+	// either does not exist or has already been spent.
 	ErrMissingTxOut
-
-	// ErrSpentTxOut indicates a transaction output referenced by an input
-	// that has already been spent.
-	ErrSpentTxOut
 
 	// ErrUnfinalizedTx indicates a transaction has not been finalized.
 	// A valid block may only contain finalized transactions.
@@ -203,6 +195,20 @@ const (
 	// the stack.
 	ErrScriptValidation
 
+	// ErrUnexpectedWitness indicates that a block includes transactions
+	// with witness data, but doesn't also have a witness commitment within
+	// the coinbase transaction.
+	ErrUnexpectedWitness
+
+	// ErrInvalidWitnessCommitment indicates that a block's witness
+	// commitment is not well formed.
+	ErrInvalidWitnessCommitment
+
+	// ErrWitnessCommitmentMismatch indicates that the witness commitment
+	// included in the block's coinbase transaction doesn't match the
+	// manually computed witness commitment.
+	ErrWitnessCommitmentMismatch
+
 	// ErrPreviousBlockUnknown indicates that the previous block is not known.
 	ErrPreviousBlockUnknown
 
@@ -214,62 +220,53 @@ const (
 	// current chain tip. This is not a block validation rule, but is required
 	// for block proposals submitted via getblocktemplate RPC.
 	ErrPrevBlockNotBest
-
-	// ErrBlockTooSmall indicates the serialized block size is less than the
-	// minimum allowed size. This consensus rule currently only applies to
-	// the first block after the Uahf.
-	ErrBlockTooSmall
-
-	// ErrInvalidTxOrder indicates the order of the transactions in the block
-	// does not follow the active transaction ordering consensus rule.
-	ErrInvalidTxOrder
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.
 var errorCodeStrings = map[ErrorCode]string{
-	ErrDuplicateBlock:        "ErrDuplicateBlock",
-	ErrBlockTooBig:           "ErrBlockTooBig",
-	ErrBlockVersionTooOld:    "ErrBlockVersionTooOld",
-	ErrInvalidTime:           "ErrInvalidTime",
-	ErrTimeTooOld:            "ErrTimeTooOld",
-	ErrTimeTooNew:            "ErrTimeTooNew",
-	ErrDifficultyTooLow:      "ErrDifficultyTooLow",
-	ErrUnexpectedDifficulty:  "ErrUnexpectedDifficulty",
-	ErrHighHash:              "ErrHighHash",
-	ErrBadMerkleRoot:         "ErrBadMerkleRoot",
-	ErrBadCheckpoint:         "ErrBadCheckpoint",
-	ErrForkTooOld:            "ErrForkTooOld",
-	ErrCheckpointTimeTooOld:  "ErrCheckpointTimeTooOld",
-	ErrNoTransactions:        "ErrNoTransactions",
-	ErrNoTxInputs:            "ErrNoTxInputs",
-	ErrNoTxOutputs:           "ErrNoTxOutputs",
-	ErrTxTooBig:              "ErrTxTooBig",
-	ErrTxTooSmall:            "ErrTxTooSmall",
-	ErrTxTooManySigOps:       "ErrTxTooManySigOps",
-	ErrBadTxOutValue:         "ErrBadTxOutValue",
-	ErrDuplicateTxInputs:     "ErrDuplicateTxInputs",
-	ErrBadTxInput:            "ErrBadTxInput",
-	ErrMissingTxOut:          "ErrMissingTxOut",
-	ErrSpentTxOut:            "ErrSpentTxOut",
-	ErrUnfinalizedTx:         "ErrUnfinalizedTx",
-	ErrDuplicateTx:           "ErrDuplicateTx",
-	ErrOverwriteTx:           "ErrOverwriteTx",
-	ErrImmatureSpend:         "ErrImmatureSpend",
-	ErrSpendTooHigh:          "ErrSpendTooHigh",
-	ErrBadFees:               "ErrBadFees",
-	ErrTooManySigOps:         "ErrTooManySigOps",
-	ErrFirstTxNotCoinbase:    "ErrFirstTxNotCoinbase",
-	ErrMultipleCoinbases:     "ErrMultipleCoinbases",
-	ErrBadCoinbaseScriptLen:  "ErrBadCoinbaseScriptLen",
-	ErrBadCoinbaseValue:      "ErrBadCoinbaseValue",
-	ErrMissingCoinbaseHeight: "ErrMissingCoinbaseHeight",
-	ErrBadCoinbaseHeight:     "ErrBadCoinbaseHeight",
-	ErrScriptMalformed:       "ErrScriptMalformed",
-	ErrScriptValidation:      "ErrScriptValidation",
-	ErrPreviousBlockUnknown:  "ErrPreviousBlockUnknown",
-	ErrInvalidAncestorBlock:  "ErrInvalidAncestorBlock",
-	ErrPrevBlockNotBest:      "ErrPrevBlockNotBest",
-	ErrInvalidTxOrder:        "ErrInvalidTxOrder",
+	ErrDuplicateBlock:            "ErrDuplicateBlock",
+	ErrBlockTooBig:               "ErrBlockTooBig",
+	ErrBlockVersionTooOld:        "ErrBlockVersionTooOld",
+	ErrBlockWeightTooHigh:        "ErrBlockWeightTooHigh",
+	ErrInvalidTime:               "ErrInvalidTime",
+	ErrTimeTooOld:                "ErrTimeTooOld",
+	ErrTimeTooNew:                "ErrTimeTooNew",
+	ErrDifficultyTooLow:          "ErrDifficultyTooLow",
+	ErrUnexpectedDifficulty:      "ErrUnexpectedDifficulty",
+	ErrHighHash:                  "ErrHighHash",
+	ErrBadMerkleRoot:             "ErrBadMerkleRoot",
+	ErrBadCheckpoint:             "ErrBadCheckpoint",
+	ErrForkTooOld:                "ErrForkTooOld",
+	ErrCheckpointTimeTooOld:      "ErrCheckpointTimeTooOld",
+	ErrNoTransactions:            "ErrNoTransactions",
+	ErrNoTxInputs:                "ErrNoTxInputs",
+	ErrNoTxOutputs:               "ErrNoTxOutputs",
+	ErrTxTooBig:                  "ErrTxTooBig",
+	ErrBadTxOutValue:             "ErrBadTxOutValue",
+	ErrDuplicateTxInputs:         "ErrDuplicateTxInputs",
+	ErrBadTxInput:                "ErrBadTxInput",
+	ErrMissingTxOut:              "ErrMissingTxOut",
+	ErrUnfinalizedTx:             "ErrUnfinalizedTx",
+	ErrDuplicateTx:               "ErrDuplicateTx",
+	ErrOverwriteTx:               "ErrOverwriteTx",
+	ErrImmatureSpend:             "ErrImmatureSpend",
+	ErrSpendTooHigh:              "ErrSpendTooHigh",
+	ErrBadFees:                   "ErrBadFees",
+	ErrTooManySigOps:             "ErrTooManySigOps",
+	ErrFirstTxNotCoinbase:        "ErrFirstTxNotCoinbase",
+	ErrMultipleCoinbases:         "ErrMultipleCoinbases",
+	ErrBadCoinbaseScriptLen:      "ErrBadCoinbaseScriptLen",
+	ErrBadCoinbaseValue:          "ErrBadCoinbaseValue",
+	ErrMissingCoinbaseHeight:     "ErrMissingCoinbaseHeight",
+	ErrBadCoinbaseHeight:         "ErrBadCoinbaseHeight",
+	ErrScriptMalformed:           "ErrScriptMalformed",
+	ErrScriptValidation:          "ErrScriptValidation",
+	ErrUnexpectedWitness:         "ErrUnexpectedWitness",
+	ErrInvalidWitnessCommitment:  "ErrInvalidWitnessCommitment",
+	ErrWitnessCommitmentMismatch: "ErrWitnessCommitmentMismatch",
+	ErrPreviousBlockUnknown:      "ErrPreviousBlockUnknown",
+	ErrInvalidAncestorBlock:      "ErrInvalidAncestorBlock",
+	ErrPrevBlockNotBest:          "ErrPrevBlockNotBest",
 }
 
 // String returns the ErrorCode as a human-readable name.

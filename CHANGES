@@ -87,8 +87,8 @@ Changes in 0.12.0 (Fri Nov 20 2015)
     - Various cleanup of the new peer package (#528, #531, #524, #534,
       #549)
     - Blocks heights now consistently use int32 everywhere (#481)
-    - The BlockHeader type in the wire package now provides the BchDecode
-      and BchEncode methods (#467)
+    - The BlockHeader type in the wire package now provides the BtcDecode
+      and BtcEncode methods (#467)
     - Update wire package to recognize BIP0064 (getutxo) service bit (#489)
     - Export LockTimeThreshold constant from txscript package (#454)
     - Export MaxDataCarrierSize constant from txscript package (#466)
@@ -468,9 +468,9 @@ Changes in 0.9.0 (Sat Sep 20 2014)
       and TLS certificates needed to communicate with btcd and btcwallet on
       the simulation test network
   - Notable developer-related package changes:
-    - Provide a new bloom package in btcutil which allows creating and
+    - Provide a new bloom package in dogutil which allows creating and
       working with BIP0037 bloom filters
-    - Provide a new hdkeychain package in btcutil which allows working with
+    - Provide a new hdkeychain package in dogutil which allows working with
       BIP0032 hierarchical deterministic key chains
     - Introduce a new btcnet package which houses network parameters
     - Provide new simnet network (--simnet) which is useful for private

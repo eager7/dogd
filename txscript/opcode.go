@@ -10,13 +10,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"golang.org/x/crypto/ripemd160"
-	"math/bits"
+	"hash"
 
-	"github.com/eager7/dogd/bchec"
+	"golang.org/x/crypto/ripemd160"
+
+	"github.com/eager7/dogd/btcec"
 	"github.com/eager7/dogd/chaincfg/chainhash"
 	"github.com/eager7/dogd/wire"
-	"hash"
 )
 
 // An opcode defines the information related to a txscript opcode.  opfunc, if
@@ -30,9 +30,9 @@ type opcode struct {
 	opfunc func(*parsedOpcode, *Engine) error
 }
 
-// These constants are the values of the official opcodes used on the bch wiki,
+// These constants are the values of the official opcodes used on the btc wiki,
 // in bitcoin core and in most if not all other references and software related
-// to handling BCH scripts.
+// to handling BTC scripts.
 const (
 	OP_0                   = 0x00 // 0
 	OP_FALSE               = 0x00 // 0 - AKA OP_0
@@ -163,9 +163,9 @@ const (
 	OP_SWAP                = 0x7c // 124
 	OP_TUCK                = 0x7d // 125
 	OP_CAT                 = 0x7e // 126
-	OP_SPLIT               = 0x7f // 127
-	OP_NUM2BIN             = 0x80 // 128
-	OP_BIN2NUM             = 0x81 // 129
+	OP_SUBSTR              = 0x7f // 127
+	OP_LEFT                = 0x80 // 128
+	OP_RIGHT               = 0x81 // 129
 	OP_SIZE                = 0x82 // 130
 	OP_INVERT              = 0x83 // 131
 	OP_AND                 = 0x84 // 132
@@ -224,8 +224,8 @@ const (
 	OP_NOP8                = 0xb7 // 183
 	OP_NOP9                = 0xb8 // 184
 	OP_NOP10               = 0xb9 // 185
-	OP_CHECKDATASIG        = 0xba // 186
-	OP_CHECKDATASIGVERIFY  = 0xbb // 187
+	OP_UNKNOWN186          = 0xba // 186
+	OP_UNKNOWN187          = 0xbb // 187
 	OP_UNKNOWN188          = 0xbc // 188
 	OP_UNKNOWN189          = 0xbd // 189
 	OP_UNKNOWN190          = 0xbe // 190
@@ -442,17 +442,17 @@ var opcodeArray = [256]opcode{
 	OP_TUCK:         {OP_TUCK, "OP_TUCK", 1, opcodeTuck},
 
 	// Splice opcodes.
-	OP_CAT:     {OP_CAT, "OP_CAT", 1, opcodeCat},
-	OP_SPLIT:   {OP_SPLIT, "OP_SPLIT", 1, opcodeSplit},
-	OP_NUM2BIN: {OP_NUM2BIN, "OP_NUM2BIN", 1, opcodeNum2bin},
-	OP_BIN2NUM: {OP_BIN2NUM, "OP_BIN2NUM", 1, opcodeBin2num},
-	OP_SIZE:    {OP_SIZE, "OP_SIZE", 1, opcodeSize},
+	OP_CAT:    {OP_CAT, "OP_CAT", 1, opcodeDisabled},
+	OP_SUBSTR: {OP_SUBSTR, "OP_SUBSTR", 1, opcodeDisabled},
+	OP_LEFT:   {OP_LEFT, "OP_LEFT", 1, opcodeDisabled},
+	OP_RIGHT:  {OP_RIGHT, "OP_RIGHT", 1, opcodeDisabled},
+	OP_SIZE:   {OP_SIZE, "OP_SIZE", 1, opcodeSize},
 
 	// Bitwise logic opcodes.
 	OP_INVERT:      {OP_INVERT, "OP_INVERT", 1, opcodeDisabled},
-	OP_AND:         {OP_AND, "OP_AND", 1, opcodeAnd},
-	OP_OR:          {OP_OR, "OP_OR", 1, opcodeOr},
-	OP_XOR:         {OP_XOR, "OP_XOR", 1, opcodeXor},
+	OP_AND:         {OP_AND, "OP_AND", 1, opcodeDisabled},
+	OP_OR:          {OP_OR, "OP_OR", 1, opcodeDisabled},
+	OP_XOR:         {OP_XOR, "OP_XOR", 1, opcodeDisabled},
 	OP_EQUAL:       {OP_EQUAL, "OP_EQUAL", 1, opcodeEqual},
 	OP_EQUALVERIFY: {OP_EQUALVERIFY, "OP_EQUALVERIFY", 1, opcodeEqualVerify},
 	OP_RESERVED1:   {OP_RESERVED1, "OP_RESERVED1", 1, opcodeReserved},
@@ -470,8 +470,8 @@ var opcodeArray = [256]opcode{
 	OP_ADD:                {OP_ADD, "OP_ADD", 1, opcodeAdd},
 	OP_SUB:                {OP_SUB, "OP_SUB", 1, opcodeSub},
 	OP_MUL:                {OP_MUL, "OP_MUL", 1, opcodeDisabled},
-	OP_DIV:                {OP_DIV, "OP_DIV", 1, opcodeDiv},
-	OP_MOD:                {OP_MOD, "OP_MOD", 1, opcodeMod},
+	OP_DIV:                {OP_DIV, "OP_DIV", 1, opcodeDisabled},
+	OP_MOD:                {OP_MOD, "OP_MOD", 1, opcodeDisabled},
 	OP_LSHIFT:             {OP_LSHIFT, "OP_LSHIFT", 1, opcodeDisabled},
 	OP_RSHIFT:             {OP_RSHIFT, "OP_RSHIFT", 1, opcodeDisabled},
 	OP_BOOLAND:            {OP_BOOLAND, "OP_BOOLAND", 1, opcodeBoolAnd},
@@ -498,8 +498,6 @@ var opcodeArray = [256]opcode{
 	OP_CHECKSIGVERIFY:      {OP_CHECKSIGVERIFY, "OP_CHECKSIGVERIFY", 1, opcodeCheckSigVerify},
 	OP_CHECKMULTISIG:       {OP_CHECKMULTISIG, "OP_CHECKMULTISIG", 1, opcodeCheckMultiSig},
 	OP_CHECKMULTISIGVERIFY: {OP_CHECKMULTISIGVERIFY, "OP_CHECKMULTISIGVERIFY", 1, opcodeCheckMultiSigVerify},
-	OP_CHECKDATASIG:        {OP_CHECKDATASIG, "OP_CHECKDATASIG", 1, opcodeCheckDataSig},
-	OP_CHECKDATASIGVERIFY:  {OP_CHECKDATASIGVERIFY, "OP_CHECKDATASIGVERIFY", 1, opcodeCheckDataSigVerify},
 
 	// Reserved opcodes.
 	OP_NOP1:  {OP_NOP1, "OP_NOP1", 1, opcodeNop},
@@ -512,6 +510,8 @@ var opcodeArray = [256]opcode{
 	OP_NOP10: {OP_NOP10, "OP_NOP10", 1, opcodeNop},
 
 	// Undefined opcodes.
+	OP_UNKNOWN186: {OP_UNKNOWN186, "OP_UNKNOWN186", 1, opcodeInvalid},
+	OP_UNKNOWN187: {OP_UNKNOWN187, "OP_UNKNOWN187", 1, opcodeInvalid},
 	OP_UNKNOWN188: {OP_UNKNOWN188, "OP_UNKNOWN188", 1, opcodeInvalid},
 	OP_UNKNOWN189: {OP_UNKNOWN189, "OP_UNKNOWN189", 1, opcodeInvalid},
 	OP_UNKNOWN190: {OP_UNKNOWN190, "OP_UNKNOWN190", 1, opcodeInvalid},
@@ -621,13 +621,31 @@ type parsedOpcode struct {
 // bad to see in the instruction stream (even if turned off by a conditional).
 func (pop *parsedOpcode) isDisabled() bool {
 	switch pop.opcode.value {
+	case OP_CAT:
+		return true
+	case OP_SUBSTR:
+		return true
+	case OP_LEFT:
+		return true
+	case OP_RIGHT:
+		return true
 	case OP_INVERT:
+		return true
+	case OP_AND:
+		return true
+	case OP_OR:
+		return true
+	case OP_XOR:
 		return true
 	case OP_2MUL:
 		return true
 	case OP_2DIV:
 		return true
 	case OP_MUL:
+		return true
+	case OP_DIV:
+		return true
+	case OP_MOD:
 		return true
 	case OP_LSHIFT:
 		return true
@@ -900,9 +918,45 @@ func opcodeNop(op *parsedOpcode, vm *Engine) error {
 	return nil
 }
 
-// popIfBool pops the top item off the stack and returns a bool
+// popIfBool enforces the "minimal if" policy during script execution if the
+// particular flag is set.  If so, in order to eliminate an additional source
+// of nuisance malleability, post-segwit for version 0 witness programs, we now
+// require the following: for OP_IF and OP_NOT_IF, the top stack item MUST
+// either be an empty byte slice, or [0x01]. Otherwise, the item at the top of
+// the stack will be popped and interpreted as a boolean.
 func popIfBool(vm *Engine) (bool, error) {
-	return vm.dstack.PopBool(vm.flags.HasFlag(ScriptVerifyMinimalIf))
+	// When not in witness execution mode, not executing a v0 witness
+	// program, or the minimal if flag isn't set pop the top stack item as
+	// a normal bool.
+	if !vm.isWitnessVersionActive(0) || !vm.hasFlag(ScriptVerifyMinimalIf) {
+		return vm.dstack.PopBool()
+	}
+
+	// At this point, a v0 witness program is being executed and the minimal
+	// if flag is set, so enforce additional constraints on the top stack
+	// item.
+	so, err := vm.dstack.PopByteArray()
+	if err != nil {
+		return false, err
+	}
+
+	// The top element MUST have a length of at least one.
+	if len(so) > 1 {
+		str := fmt.Sprintf("minimal if is active, top element MUST "+
+			"have a length of at least, instead length is %v",
+			len(so))
+		return false, scriptError(ErrMinimalIf, str)
+	}
+
+	// Additionally, if the length is one, then the value MUST be 0x01.
+	if len(so) == 1 && so[0] != 0x01 {
+		str := fmt.Sprintf("minimal if is active, top stack item MUST "+
+			"be an empty byte array or 0x01, is instead: %v",
+			so[0])
+		return false, scriptError(ErrMinimalIf, str)
+	}
+
+	return asBool(so), nil
 }
 
 // opcodeIf treats the top item on the data stack as a boolean and removes it.
@@ -922,7 +976,7 @@ func popIfBool(vm *Engine) (bool, error) {
 // Conditional stack transformation: [...] -> [... OpCondValue]
 func opcodeIf(op *parsedOpcode, vm *Engine) error {
 	condVal := OpCondFalse
-	if vm.IsBranchExecuting() {
+	if vm.isBranchExecuting() {
 		ok, err := popIfBool(vm)
 		if err != nil {
 			return err
@@ -956,7 +1010,7 @@ func opcodeIf(op *parsedOpcode, vm *Engine) error {
 // Conditional stack transformation: [...] -> [... OpCondValue]
 func opcodeNotIf(op *parsedOpcode, vm *Engine) error {
 	condVal := OpCondFalse
-	if vm.IsBranchExecuting() {
+	if vm.isBranchExecuting() {
 		ok, err := popIfBool(vm)
 		if err != nil {
 			return err
@@ -1020,7 +1074,7 @@ func opcodeEndif(op *parsedOpcode, vm *Engine) error {
 // where the verification fails specifically due to the top item evaluating
 // to false, the returned error will use the passed error code.
 func abstractVerify(op *parsedOpcode, vm *Engine, c ErrorCode) error {
-	verified, err := vm.dstack.PopBool(false)
+	verified, err := vm.dstack.PopBool()
 	if err != nil {
 		return err
 	}
@@ -1398,128 +1452,6 @@ func opcodeTuck(op *parsedOpcode, vm *Engine) error {
 	return vm.dstack.Tuck()
 }
 
-// opcodeCat concatenates two byte sequences. The result must
-// not be larger than MaxScriptElementSize.
-//
-// Stack transformation: {Ox11} {0x22, 0x33} OP_CAT -> 0x112233
-func opcodeCat(op *parsedOpcode, vm *Engine) error {
-	b, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	a, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	c := make([]byte, len(a)+len(b))
-	copy(c[:len(a)], a)
-	copy(c[len(a):], b)
-	if len(c) > MaxScriptElementSize {
-		str := fmt.Sprintf("concatenated size %d exceeds max allowed size %d",
-			len(c), MaxScriptElementSize)
-		return scriptError(ErrElementTooBig, str)
-	}
-	vm.dstack.PushByteArray(c)
-	return nil
-}
-
-// opcodeSplit splits the operand at the given position.
-// This operation is the exact inverse of OP_CAT
-//
-// Stack transformation: x n OP_SPLIT -> x1 x2
-func opcodeSplit(op *parsedOpcode, vm *Engine) error {
-	n, err := vm.dstack.PopInt()
-	if err != nil {
-		return err
-	}
-	c, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	if n.Int32() > int32(len(c)) {
-		return scriptError(ErrNumberTooBig, "n is larger than length of array")
-	}
-	if n < 0 {
-		return scriptError(ErrNumberTooSmall, "n is negative")
-	}
-	a := c[:n]
-	b := c[n:]
-	vm.dstack.PushByteArray(a)
-	vm.dstack.PushByteArray(b)
-	return nil
-}
-
-// opcodeNum2Bin converts the numeric value into a byte sequence of a
-// certain size, taking account of the sign bit. The byte sequence
-// produced uses the little-endian encoding.
-//
-// Stack transformation: a b OP_NUM2BIN -> x
-func opcodeNum2bin(op *parsedOpcode, vm *Engine) error {
-	n, err := vm.dstack.PopInt()
-	if err != nil {
-		return err
-	}
-	a, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-
-	size := int(n.Int32())
-
-	if size > MaxScriptElementSize {
-		return scriptError(ErrNumberTooBig,
-			fmt.Sprintf("n is larger than the max of %d", defaultScriptNumLen))
-	}
-
-	b := minimallyEncode(a)
-	if len(b) > size {
-		return scriptError(ErrNumberTooSmall, "cannot fit it into n sized array")
-	}
-	if len(b) == size {
-		vm.dstack.PushByteArray(b)
-		return nil
-	}
-
-	signbit := byte(0x00)
-
-	if len(b) > 0 {
-		signbit = b[len(b)-1] & 0x80
-		b[len(b)-1] &= 0x7f
-	}
-	for len(b) < size-1 {
-		b = append(b, 0x00)
-	}
-
-	b = append(b, signbit)
-
-	vm.dstack.PushByteArray(b)
-	return nil
-}
-
-// opcodeBin2num converts the byte sequence into a numeric value,
-// including minimal encoding. The byte sequence must encode the
-// value in little-endian encoding.
-//
-// Stack transformation: a OP_BIN2NUM -> x
-func opcodeBin2num(op *parsedOpcode, vm *Engine) error {
-	a, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-
-	n, err := makeScriptNum(a, false, len(a))
-	if err != nil {
-		return err
-	}
-	if len(n.Bytes()) > defaultScriptNumLen {
-		return scriptError(ErrNumberTooBig,
-			fmt.Sprintf("script numbers are limited to %d bytes", defaultScriptNumLen))
-	}
-
-	vm.dstack.PushInt(n)
-	return nil
-}
-
 // opcodeSize pushes the size of the top item of the data stack onto the data
 // stack.
 //
@@ -1531,75 +1463,6 @@ func opcodeSize(op *parsedOpcode, vm *Engine) error {
 	}
 
 	vm.dstack.PushInt(scriptNum(len(so)))
-	return nil
-}
-
-// opcodeAnd executes a boolean and between each bit in the operands
-//
-// Stack transformation: x1 x2 OP_AND -> out
-func opcodeAnd(op *parsedOpcode, vm *Engine) error {
-	a, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	b, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	if len(a) != len(b) {
-		return scriptError(ErrInvalidInputLength, "byte arrays are not the same length")
-	}
-	c := make([]byte, len(a))
-	for i := range a {
-		c[i] = a[i] & b[i]
-	}
-	vm.dstack.PushByteArray(c)
-	return nil
-}
-
-// opcodeOr executes a boolean or between each bit in the operands
-//
-// Stack transformation: x1 x2 OP_OR -> out
-func opcodeOr(op *parsedOpcode, vm *Engine) error {
-	a, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	b, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	if len(a) != len(b) {
-		return scriptError(ErrInvalidInputLength, "byte arrays are not the same length")
-	}
-	c := make([]byte, len(a))
-	for i := range a {
-		c[i] = a[i] | b[i]
-	}
-	vm.dstack.PushByteArray(c)
-	return nil
-}
-
-// opcodeXor executes a boolean xor between each bit in the operands
-//
-// Stack transformation: x1 x2 OP_XOR -> out
-func opcodeXor(op *parsedOpcode, vm *Engine) error {
-	a, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	b, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	if len(a) != len(b) {
-		return scriptError(ErrInvalidInputLength, "byte arrays are not the same length")
-	}
-	c := make([]byte, len(a))
-	for i := range a {
-		c[i] = a[i] ^ b[i]
-	}
-	vm.dstack.PushByteArray(c)
 	return nil
 }
 
@@ -1776,50 +1639,6 @@ func opcodeSub(op *parsedOpcode, vm *Engine) error {
 	}
 
 	vm.dstack.PushInt(v1 - v0)
-	return nil
-}
-
-// opcodeDiv return the integer quotient of a and b. If the result
-// would be a non-integer it is rounded towards zero.
-//
-// Stack transformation: a b OP_DIV -> out
-func opcodeDiv(op *parsedOpcode, vm *Engine) error {
-	b, err := vm.dstack.PopInt()
-	if err != nil {
-		return err
-	}
-
-	a, err := vm.dstack.PopInt()
-	if err != nil {
-		return err
-	}
-
-	if b == 0 {
-		return scriptError(ErrNumberTooSmall, "divide by zero")
-	}
-	vm.dstack.PushInt(a / b)
-	return nil
-}
-
-// opcodeMod returns the remainder after dividing a by b. The output will
-// be represented using the least number of bytes required.
-//
-// Stack transformation: a b OP_MOD -> out
-func opcodeMod(op *parsedOpcode, vm *Engine) error {
-	b, err := vm.dstack.PopInt()
-	if err != nil {
-		return err
-	}
-
-	a, err := vm.dstack.PopInt()
-	if err != nil {
-		return err
-	}
-
-	if b == 0 {
-		return scriptError(ErrNumberTooSmall, "mod by zero")
-	}
-	vm.dstack.PushInt(a % b)
 	return nil
 }
 
@@ -2271,40 +2090,40 @@ func opcodeCheckSig(op *parsedOpcode, vm *Engine) error {
 
 	// Generate the signature hash based on the signature hash type.
 	var hash []byte
+	if vm.isWitnessVersionActive(0) {
+		var sigHashes *TxSigHashes
+		if vm.hashCache != nil {
+			sigHashes = vm.hashCache
+		} else {
+			sigHashes = NewTxSigHashes(&vm.tx)
+		}
 
-	// Remove the signature since there is no way for a signature
-	// to sign itself.
-	subScript = removeOpcodeByData(subScript, fullSigBytes)
-
-	var sigHashes *TxSigHashes
-	if vm.hashCache != nil {
-		sigHashes = vm.hashCache
+		hash, err = calcWitnessSignatureHash(subScript, sigHashes, hashType,
+			&vm.tx, vm.txIdx, vm.inputAmount)
+		if err != nil {
+			return err
+		}
 	} else {
-		sigHashes = NewTxSigHashes(&vm.tx)
+		// Remove the signature since there is no way for a signature
+		// to sign itself.
+		subScript = removeOpcodeByData(subScript, fullSigBytes)
+
+		hash = calcSignatureHash(subScript, hashType, &vm.tx, vm.txIdx)
 	}
 
-	hash, err = calcSignatureHash(subScript, sigHashes, hashType, &vm.tx, vm.txIdx,
-		vm.inputAmount, vm.hasFlag(ScriptVerifyBip143SigHash))
+	pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 	if err != nil {
 		vm.dstack.PushBool(false)
 		return nil
 	}
 
-	pubKey, err := bchec.ParsePubKey(pkBytes, bchec.S256())
-	if err != nil {
-		vm.dstack.PushBool(false)
-		return nil
-	}
-
-	var signature *bchec.Signature
-	if vm.hasFlag(ScriptVerifySchnorr) && len(sigBytes) == 64 {
-		signature, err = bchec.ParseSchnorrSignature(sigBytes)
-	} else if vm.hasFlag(ScriptVerifyStrictEncoding) ||
+	var signature *btcec.Signature
+	if vm.hasFlag(ScriptVerifyStrictEncoding) ||
 		vm.hasFlag(ScriptVerifyDERSignatures) {
 
-		signature, err = bchec.ParseDERSignature(sigBytes, bchec.S256())
+		signature, err = btcec.ParseDERSignature(sigBytes, btcec.S256())
 	} else {
-		signature, err = bchec.ParseBERSignature(sigBytes, bchec.S256())
+		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
 	}
 	if err != nil {
 		vm.dstack.PushBool(false)
@@ -2352,7 +2171,7 @@ func opcodeCheckSigVerify(op *parsedOpcode, vm *Engine) error {
 // the same signature multiple times when verifying a multisig.
 type parsedSigInfo struct {
 	signature       []byte
-	parsedSignature *bchec.Signature
+	parsedSignature *btcec.Signature
 	parsed          bool
 }
 
@@ -2435,22 +2254,19 @@ func opcodeCheckMultiSig(op *parsedOpcode, vm *Engine) error {
 		signatures = append(signatures, sigInfo)
 	}
 
-	// This dummy element was originally a bug in the original Satoshi
-	// codebase which required clients to add an extra element to the
-	// script. However when ScriptVerifySchnorrMultisig is active the
-	// dummy element is re-purposed to serve to flag the use of schnorr
-	// or ECDSA in this opcode.
-	b, err := vm.dstack.PopByteArray()
+	// A bug in the original Satoshi client implementation means one more
+	// stack value than should be used must be popped.  Unfortunately, this
+	// buggy behavior is now part of the consensus and a hard fork would be
+	// required to fix it.
+	dummy, err := vm.dstack.PopByteArray()
 	if err != nil {
 		return err
 	}
-	dummy := make([]byte, len(b))
-	copy(dummy, b)
 
 	// Since the dummy argument is otherwise not checked, it could be any
 	// value which unfortunately provides a source of malleability.  Thus,
 	// there is a script flag to force an error when the value is NOT 0.
-	if !vm.hasFlag(ScriptVerifySchnorrMultisig) && vm.hasFlag(ScriptStrictMultiSig) && len(dummy) != 0 {
+	if vm.hasFlag(ScriptStrictMultiSig) && len(dummy) != 0 {
 		str := fmt.Sprintf("multisig dummy argument has length %d "+
 			"instead of 0", len(dummy))
 		return scriptError(ErrSigNullDummy, str)
@@ -2459,255 +2275,129 @@ func opcodeCheckMultiSig(op *parsedOpcode, vm *Engine) error {
 	// Get script starting from the most recent OP_CODESEPARATOR.
 	script := vm.subScript()
 
-	for _, sigInfo := range signatures {
-		script = removeOpcodeByData(script, sigInfo.signature)
-	}
-
-	var sigHashes *TxSigHashes
-	if vm.hasFlag(ScriptVerifyBip143SigHash) {
-		if vm.hashCache != nil {
-			sigHashes = vm.hashCache
-		} else {
-			sigHashes = NewTxSigHashes(&vm.tx)
+	// Remove the signature in pre version 0 segwit scripts since there is
+	// no way for a signature to sign itself.
+	if !vm.isWitnessVersionActive(0) {
+		for _, sigInfo := range signatures {
+			script = removeOpcodeByData(script, sigInfo.signature)
 		}
 	}
 
 	success := true
-
-	if vm.hasFlag(ScriptVerifySchnorrMultisig) && len(dummy) > 0 { // Schnorr multisig
-		pubKeyIdx := len(pubKeys) - 1
-		signatureIdx := len(signatures) - 1
-
-		// Fail if the dummy element does not have length in bytes = floor((N+7)/8)
-		expectedDummyLen := (numPubKeys + 7) / 8
-		if len(dummy) != expectedDummyLen {
-			str := fmt.Sprintf("multisig dummy argument has length %d "+
-				"instead of %d", len(dummy), expectedDummyLen)
-			return scriptError(ErrInvalidDummy, str)
+	numPubKeys++
+	pubKeyIdx := -1
+	signatureIdx := 0
+	for numSignatures > 0 {
+		// When there are more signatures than public keys remaining,
+		// there is no way to succeed since too many signatures are
+		// invalid, so exit early.
+		pubKeyIdx++
+		numPubKeys--
+		if numSignatures > numPubKeys {
+			success = false
+			break
 		}
 
-		// Pad dummy and convert to uint32
-		dummy = append(dummy, make([]byte, 4-len(dummy))...)
-		checkBits := binary.LittleEndian.Uint32(dummy)
+		sigInfo := signatures[signatureIdx]
+		pubKey := pubKeys[pubKeyIdx]
 
-		// The bitfield doesn't set the right number of signatures.
-		numBits := bits.OnesCount32(checkBits)
-		if numBits != numSignatures {
-			str := fmt.Sprintf("Number of set bits in schnorr multisig (%d) "+
-				"is greater than number of signatures (%d)", numBits, numSignatures)
-			return scriptError(ErrInvalidBitCount, str)
+		// The order of the signature and public key evaluation is
+		// important here since it can be distinguished by an
+		// OP_CHECKMULTISIG NOT when the strict encoding flag is set.
+
+		rawSig := sigInfo.signature
+		if len(rawSig) == 0 {
+			// Skip to the next pubkey if signature is empty.
+			continue
 		}
 
-		// Check the range of the bits does not exceed the number of pubkeys.
-		mask := uint32(1<<uint64(numPubKeys)) - 1
-		if checkBits&mask != checkBits {
-			str := fmt.Sprintf("Invalid bit range")
-			return scriptError(ErrInvalidBitCount, str)
-		}
+		// Split the signature into hash type and signature components.
+		hashType := SigHashType(rawSig[len(rawSig)-1])
+		signature := rawSig[:len(rawSig)-1]
 
-		iKey := uint(0)
-		for iSig := uint(0); iSig < uint(numSignatures); iKey, iSig = iKey+1, iSig+1 {
-
-			if checkBits>>iKey == 0 {
-				// This is a sanity check and should be
-				// unreachable.
-				str := fmt.Sprintf("Checkbits pubkey index invalid")
-				return scriptError(ErrInvalidBitCount, str)
-			}
-
-			// Find the next suitable key.
-			for (checkBits>>iKey)&0x01 == 0 {
-				iKey++
-			}
-
-			if iKey >= uint(numPubKeys) {
-				// This is a sanity check and should be
-				// unrecheable.
-				str := fmt.Sprintf("Pubkey index too large: %d > %d",
-					iKey, numPubKeys)
-				return scriptError(ErrInvalidPubKeyCount, str)
-			}
-
-			sigInfo := signatures[signatureIdx-int(iSig)]
-			pubKey := pubKeys[pubKeyIdx-int(iKey)]
-
-			rawSig := sigInfo.signature
-			if len(rawSig) == 0 {
-				return scriptError(ErrSigInvalidDataLen, "Schnorr signatures must be 64 bytes in CHECKMULTISIG")
-			}
-
-			// Split the signature into hash type and signature components.
-			hashType := SigHashType(rawSig[len(rawSig)-1])
-			signature := rawSig[:len(rawSig)-1]
-
-			// Only parse and check the signature encoding once.
+		// Only parse and check the signature encoding once.
+		var parsedSig *btcec.Signature
+		if !sigInfo.parsed {
 			if err := vm.checkHashTypeEncoding(hashType); err != nil {
 				return err
 			}
-
-			if len(signature) != 64 {
-				return scriptError(ErrSigInvalidDataLen, "Schnorr signatures must be 64 bytes in CHECKMULTISIG")
+			if err := vm.checkSignatureEncoding(signature); err != nil {
+				return err
 			}
 
 			// Parse the signature.
-			parsedSig, err := bchec.ParseSchnorrSignature(signature)
-			if err != nil {
-				return err
-			}
+			var err error
+			if vm.hasFlag(ScriptVerifyStrictEncoding) ||
+				vm.hasFlag(ScriptVerifyDERSignatures) {
 
-			if err := vm.checkPubKeyEncoding(pubKey); err != nil {
-				return err
-			}
-
-			// Parse the pubkey.
-			parsedPubKey, err := bchec.ParsePubKey(pubKey, bchec.S256())
-			if err != nil {
-				return err
-			}
-
-			// Generate the signature hash based on the signature hash type.
-			signatureHash, err := calcSignatureHash(script, sigHashes, hashType, &vm.tx, vm.txIdx,
-				vm.inputAmount, vm.hasFlag(ScriptVerifyBip143SigHash))
-			if err != nil {
-				vm.dstack.PushBool(false)
-				return nil
-			}
-
-			var valid bool
-			if vm.sigCache != nil {
-				var sigHash chainhash.Hash
-				copy(sigHash[:], signatureHash)
-
-				valid = vm.sigCache.Exists(sigHash, parsedSig, parsedPubKey)
-				if !valid && parsedSig.Verify(signatureHash, parsedPubKey) {
-					vm.sigCache.Add(sigHash, parsedSig, parsedPubKey)
-					valid = true
-				}
+				parsedSig, err = btcec.ParseDERSignature(signature,
+					btcec.S256())
 			} else {
-				valid = parsedSig.Verify(signatureHash, parsedPubKey)
+				parsedSig, err = btcec.ParseSignature(signature,
+					btcec.S256())
 			}
-
-			if !valid {
-				str := "not all signatures empty on failed checkmultisig"
-				return scriptError(ErrNullFail, str)
-			}
-		}
-
-		if checkBits>>iKey != 0 {
-			// This is a sanity check and should be
-			// unreachable.
-			str := fmt.Sprintf("dummy key index %d greater than num pubkeys", iKey)
-			return scriptError(ErrInvalidBitCount, str)
-		}
-	} else { // ECDSA multisig
-		numPubKeys++
-		pubKeyIdx := -1
-		signatureIdx := 0
-		for numSignatures > 0 {
-			// When there are more signatures than public keys remaining,
-			// there is no way to succeed since too many signatures are
-			// invalid, so exit early.
-			pubKeyIdx++
-			numPubKeys--
-			if numSignatures > numPubKeys {
-				success = false
-				break
-			}
-
-			sigInfo := signatures[signatureIdx]
-			pubKey := pubKeys[pubKeyIdx]
-
-			// The order of the signature and public key evaluation is
-			// important here since it can be distinguished by an
-			// OP_CHECKMULTISIG NOT when the strict encoding flag is set.
-
-			rawSig := sigInfo.signature
-			if len(rawSig) == 0 {
-				// Skip to the next pubkey if signature is empty.
-				continue
-			}
-
-			// Split the signature into hash type and signature components.
-			hashType := SigHashType(rawSig[len(rawSig)-1])
-			signature := rawSig[:len(rawSig)-1]
-
-			// Only parse and check the signature encoding once.
-			var parsedSig *bchec.Signature
-			if !sigInfo.parsed {
-				if err := vm.checkHashTypeEncoding(hashType); err != nil {
-					return err
-				}
-				if err := vm.checkSignatureEncoding(signature); err != nil {
-					return err
-				}
-
-				if vm.hasFlag(ScriptVerifySchnorr) && len(signature) == 64 {
-					return scriptError(ErrSigInvalidDataLen, "Signature cannot be 65 bytes in CHECKMULTISIG")
-				}
-
-				// Parse the signature.
-				var err error
-				if vm.hasFlag(ScriptVerifyStrictEncoding) ||
-					vm.hasFlag(ScriptVerifyDERSignatures) {
-
-					parsedSig, err = bchec.ParseDERSignature(signature,
-						bchec.S256())
-				} else {
-					parsedSig, err = bchec.ParseBERSignature(signature,
-						bchec.S256())
-				}
-				sigInfo.parsed = true
-				if err != nil {
-					continue
-				}
-				sigInfo.parsedSignature = parsedSig
-			} else {
-				// Skip to the next pubkey if the signature is invalid.
-				if sigInfo.parsedSignature == nil {
-					continue
-				}
-
-				// Use the already parsed signature.
-				parsedSig = sigInfo.parsedSignature
-			}
-
-			if err := vm.checkPubKeyEncoding(pubKey); err != nil {
-				return err
-			}
-
-			// Parse the pubkey.
-			parsedPubKey, err := bchec.ParsePubKey(pubKey, bchec.S256())
+			sigInfo.parsed = true
 			if err != nil {
 				continue
 			}
-
-			// Generate the signature hash based on the signature hash type.
-			signatureHash, err := calcSignatureHash(script, sigHashes, hashType, &vm.tx, vm.txIdx,
-				vm.inputAmount, vm.hasFlag(ScriptVerifyBip143SigHash))
-			if err != nil {
-				vm.dstack.PushBool(false)
-				return nil
+			sigInfo.parsedSignature = parsedSig
+		} else {
+			// Skip to the next pubkey if the signature is invalid.
+			if sigInfo.parsedSignature == nil {
+				continue
 			}
 
-			var valid bool
-			if vm.sigCache != nil {
-				var sigHash chainhash.Hash
-				copy(sigHash[:], signatureHash)
+			// Use the already parsed signature.
+			parsedSig = sigInfo.parsedSignature
+		}
 
-				valid = vm.sigCache.Exists(sigHash, parsedSig, parsedPubKey)
-				if !valid && parsedSig.Verify(signatureHash, parsedPubKey) {
-					vm.sigCache.Add(sigHash, parsedSig, parsedPubKey)
-					valid = true
-				}
+		if err := vm.checkPubKeyEncoding(pubKey); err != nil {
+			return err
+		}
+
+		// Parse the pubkey.
+		parsedPubKey, err := btcec.ParsePubKey(pubKey, btcec.S256())
+		if err != nil {
+			continue
+		}
+
+		// Generate the signature hash based on the signature hash type.
+		var hash []byte
+		if vm.isWitnessVersionActive(0) {
+			var sigHashes *TxSigHashes
+			if vm.hashCache != nil {
+				sigHashes = vm.hashCache
 			} else {
-				valid = parsedSig.Verify(signatureHash, parsedPubKey)
+				sigHashes = NewTxSigHashes(&vm.tx)
 			}
 
-			if valid {
-				// PubKey verified, move on to the next signature.
-				signatureIdx++
-				numSignatures--
+			hash, err = calcWitnessSignatureHash(script, sigHashes, hashType,
+				&vm.tx, vm.txIdx, vm.inputAmount)
+			if err != nil {
+				return err
 			}
+		} else {
+			hash = calcSignatureHash(script, hashType, &vm.tx, vm.txIdx)
+		}
+
+		var valid bool
+		if vm.sigCache != nil {
+			var sigHash chainhash.Hash
+			copy(sigHash[:], hash)
+
+			valid = vm.sigCache.Exists(sigHash, parsedSig, parsedPubKey)
+			if !valid && parsedSig.Verify(hash, parsedPubKey) {
+				vm.sigCache.Add(sigHash, parsedSig, parsedPubKey)
+				valid = true
+			}
+		} else {
+			valid = parsedSig.Verify(hash, parsedPubKey)
+		}
+
+		if valid {
+			// PubKey verified, move on to the next signature.
+			signatureIdx++
+			numSignatures--
 		}
 	}
 
@@ -2738,107 +2428,6 @@ func opcodeCheckMultiSigVerify(op *parsedOpcode, vm *Engine) error {
 	return err
 }
 
-// opcodeCheckDataSig check whether a signature is valid with respect to a
-// message and a public key. It permits data to be imported into a script,
-// and have its validity checked against some signing authority such as an "Oracle".
-//
-// Stack transformation:
-// [<sig>, <msg>, <pubKey>] -> [... bool]
-func opcodeCheckDataSig(op *parsedOpcode, vm *Engine) error {
-	if !vm.hasFlag(ScriptVerifyCheckDataSig) {
-		str := fmt.Sprintf("attempt to execute disabled opcode %s",
-			op.opcode.name)
-		return scriptError(ErrDisabledOpcode, str)
-	}
-	pkBytes, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-
-	messageBytes, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-	messageHash := sha256.Sum256(messageBytes)
-
-	sigBytes, err := vm.dstack.PopByteArray()
-	if err != nil {
-		return err
-	}
-
-	if len(sigBytes) > 0 {
-		err := vm.checkSignatureEncoding(sigBytes)
-		if err != nil {
-			return err
-		}
-	}
-	if err := vm.checkPubKeyEncoding(pkBytes); err != nil {
-		return err
-	}
-
-	pubKey, err := bchec.ParsePubKey(pkBytes, bchec.S256())
-	if err != nil {
-		vm.dstack.PushBool(false)
-		return nil
-	}
-
-	var signature *bchec.Signature
-	if vm.hasFlag(ScriptVerifySchnorr) && len(sigBytes) == 64 {
-		signature, err = bchec.ParseSchnorrSignature(sigBytes)
-	} else if vm.hasFlag(ScriptVerifyStrictEncoding) ||
-		vm.hasFlag(ScriptVerifyDERSignatures) {
-
-		signature, err = bchec.ParseDERSignature(sigBytes, bchec.S256())
-	} else {
-		signature, err = bchec.ParseBERSignature(sigBytes, bchec.S256())
-	}
-	if err != nil {
-		vm.dstack.PushBool(false)
-		return nil
-	}
-
-	var valid bool
-	if vm.sigCache != nil {
-		var sigHash chainhash.Hash
-		copy(sigHash[:], messageHash[:])
-
-		valid = vm.sigCache.Exists(sigHash, signature, pubKey)
-		if !valid && signature.Verify(messageHash[:], pubKey) {
-			vm.sigCache.Add(sigHash, signature, pubKey)
-			valid = true
-		}
-	} else {
-		valid = signature.Verify(messageHash[:], pubKey)
-	}
-
-	if !valid && vm.hasFlag(ScriptVerifyNullFail) && len(sigBytes) > 0 {
-		str := "signature not empty on failed checksig"
-		return scriptError(ErrNullFail, str)
-	}
-
-	vm.dstack.PushBool(valid)
-	return nil
-}
-
-// opcodeCheckDataSigVerifyis a combination of opcodeCheckDataSig and
-// opcodeVerify.  The opcodeCheckDataSig is invoked followed by opcodeVerify.
-// See the documentation for each of those opcodes for more details.
-//
-// Stack transformation:
-// [<sig>, <msg>, <pubKey>] -> [... bool] -> [...]
-func opcodeCheckDataSigVerify(op *parsedOpcode, vm *Engine) error {
-	if !vm.hasFlag(ScriptVerifyCheckDataSig) {
-		str := fmt.Sprintf("attempt to execute disabled opcode %s",
-			op.opcode.name)
-		return scriptError(ErrDisabledOpcode, str)
-	}
-	err := opcodeCheckDataSig(op, vm)
-	if err == nil {
-		err = abstractVerify(op, vm, ErrCheckDataSigVerify)
-	}
-	return err
-}
-
 // OpcodeByName is a map that can be used to lookup an opcode by its
 // human-readable name (OP_CHECKMULTISIG, OP_CHECKSIG, etc).
 var OpcodeByName = make(map[string]byte)
@@ -2848,7 +2437,7 @@ func init() {
 	// opcode array.  Also add entries for "OP_FALSE", "OP_TRUE", and
 	// "OP_NOP2" since they are aliases for "OP_0", "OP_1",
 	// and "OP_CHECKLOCKTIMEVERIFY" respectively.
-	for _, op := range &opcodeArray {
+	for _, op := range opcodeArray {
 		OpcodeByName[op.name] = op.value
 	}
 	OpcodeByName["OP_FALSE"] = OP_FALSE

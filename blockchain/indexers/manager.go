@@ -68,7 +68,7 @@ func dbFetchIndexerTip(dbTx database.Tx, idxKey []byte) (*chainhash.Hash, int32,
 // given block using the provided indexer and updates the tip of the indexer
 // accordingly.  An error will be returned if the current tip for the indexer is
 // not the previous block for the passed block.
-func dbIndexConnectBlock(dbTx database.Tx, indexer Indexer, block *bchutil.Block,
+func dbIndexConnectBlock(dbTx database.Tx, indexer Indexer, block *dogutil.Block,
 	stxo []blockchain.SpentTxOut) error {
 
 	// Assert that the block being connected properly connects to the
@@ -98,7 +98,7 @@ func dbIndexConnectBlock(dbTx database.Tx, indexer Indexer, block *bchutil.Block
 // given block using the provided indexer and updates the tip of the indexer
 // accordingly.  An error will be returned if the current tip for the indexer is
 // not the passed block.
-func dbIndexDisconnectBlock(dbTx database.Tx, indexer Indexer, block *bchutil.Block,
+func dbIndexDisconnectBlock(dbTx database.Tx, indexer Indexer, block *dogutil.Block,
 	stxo []blockchain.SpentTxOut) error {
 
 	// Assert that the block being disconnected is the current tip of the
@@ -270,13 +270,6 @@ func (m *Manager) Init(chain *blockchain.BlockChain, interrupt <-chan struct{}) 
 		}
 	}
 
-	// Migrate each index if necessary.
-	for _, indexer := range m.enabledIndexes {
-		if err := indexer.Migrate(m.db, interrupt); err != nil {
-			return err
-		}
-	}
-
 	// Rollback indexes to the main chain if their tip is an orphaned fork.
 	// This is fairly unlikely, but it can happen if the chain is
 	// reorganized while the index is disabled.  This has to be done in
@@ -310,13 +303,13 @@ func (m *Manager) Init(chain *blockchain.BlockChain, interrupt <-chan struct{}) 
 			// loaded directly since it is no longer in the main
 			// chain and thus the chain.BlockByHash function would
 			// error.
-			var block *bchutil.Block
+			var block *dogutil.Block
 			err := m.db.View(func(dbTx database.Tx) error {
 				blockBytes, err := dbTx.FetchBlock(hash)
 				if err != nil {
 					return err
 				}
-				block, err = bchutil.NewBlockFromBytes(blockBytes)
+				block, err = dogutil.NewBlockFromBytes(blockBytes)
 				if err != nil {
 					return err
 				}
@@ -452,7 +445,7 @@ func (m *Manager) Init(chain *blockchain.BlockChain, interrupt <-chan struct{}) 
 		}
 
 		// Log indexing progress.
-		progressLogger.LogBlockHeight(block, uint64(bestHeight))
+		progressLogger.LogBlockHeight(block)
 
 		if interruptRequested(interrupt) {
 			return errInterruptRequested
@@ -506,7 +499,7 @@ func dbFetchTx(dbTx database.Tx, hash *chainhash.Hash) (*wire.MsgTx, error) {
 // checks, and invokes each indexer.
 //
 // This is part of the blockchain.IndexManager interface.
-func (m *Manager) ConnectBlock(dbTx database.Tx, block *bchutil.Block,
+func (m *Manager) ConnectBlock(dbTx database.Tx, block *dogutil.Block,
 	stxos []blockchain.SpentTxOut) error {
 
 	// Call each of the currently active optional indexes with the block
@@ -526,7 +519,7 @@ func (m *Manager) ConnectBlock(dbTx database.Tx, block *bchutil.Block,
 // the index entries associated with the block.
 //
 // This is part of the blockchain.IndexManager interface.
-func (m *Manager) DisconnectBlock(dbTx database.Tx, block *bchutil.Block,
+func (m *Manager) DisconnectBlock(dbTx database.Tx, block *dogutil.Block,
 	stxo []blockchain.SpentTxOut) error {
 
 	// Call each of the currently active optional indexes with the block
@@ -675,9 +668,6 @@ func dropIndex(db database.DB, idxKey []byte, idxName string, interrupt <-chan s
 			}
 			return bucket.DeleteBucket(bucketName[len(bucketName)-1])
 		})
-		if err != nil {
-			return err
-		}
 	}
 
 	// Call extra index specific deinitialization for the transaction index.

@@ -37,8 +37,8 @@ func TestCreateOpenFail(t *testing.T) {
 	// Ensure that attempting to open a database with the wrong number of
 	// parameters returns the expected error.
 	wantErr := fmt.Errorf("invalid arguments to %s.Open -- expected "+
-		"database path and block network with optional cache size and flush seconds", dbType)
-	_, err = database.Open(dbType, 1, 2, 3, 4, 5)
+		"database path and block network", dbType)
+	_, err = database.Open(dbType, 1, 2, 3)
 	if err.Error() != wantErr.Error() {
 		t.Errorf("Open: did not receive expected error - got %v, "+
 			"want %v", err, wantErr)
@@ -70,8 +70,8 @@ func TestCreateOpenFail(t *testing.T) {
 	// Ensure that attempting to create a database with the wrong number of
 	// parameters returns the expected error.
 	wantErr = fmt.Errorf("invalid arguments to %s.Create -- expected "+
-		"database path and block network with optional cache size and flush seconds", dbType)
-	_, err = database.Create(dbType, 1, 2, 3, 4, 5)
+		"database path and block network", dbType)
+	_, err = database.Create(dbType, 1, 2, 3)
 	if err.Error() != wantErr.Error() {
 		t.Errorf("Create: did not receive expected error - got %v, "+
 			"want %v", err, wantErr)
@@ -171,7 +171,7 @@ func TestPersistence(t *testing.T) {
 		"b1key2": "foo2",
 		"b1key3": "foo3",
 	}
-	genesisBlock := bchutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
+	genesisBlock := dogutil.NewBlock(chaincfg.MainNetParams.GenesisBlock)
 	genesisHash := chaincfg.MainNetParams.GenesisHash
 	err = db.Update(func(tx database.Tx) error {
 		metadataBucket := tx.Metadata()

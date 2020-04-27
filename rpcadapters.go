@@ -52,14 +52,6 @@ func (p *rpcPeer) BanScore() uint32 {
 	return (*serverPeer)(p).banScore.Int()
 }
 
-// IsWhitelisted returns whether or not the peer is whitelisted.
-//
-// This function is safe for concurrent access and is part of the rpcserverPeer
-// interface implementation.
-func (p *rpcPeer) IsWhitelisted() bool {
-	return (*serverPeer)(p).isWhitelisted
-}
-
 // FeeFilter returns the requested current minimum fee rate for which
 // transactions should be announced.
 //
@@ -255,7 +247,7 @@ func (b *rpcSyncMgr) IsCurrent() bool {
 //
 // This function is safe for concurrent access and is part of the
 // rpcserverSyncManager interface implementation.
-func (b *rpcSyncMgr) SubmitBlock(block *bchutil.Block, flags blockchain.BehaviorFlags) (bool, error) {
+func (b *rpcSyncMgr) SubmitBlock(block *dogutil.Block, flags blockchain.BehaviorFlags) (bool, error) {
 	return b.syncMgr.ProcessBlock(block, flags)
 }
 
@@ -284,9 +276,4 @@ func (b *rpcSyncMgr) SyncPeerID() int32 {
 // rpcserverSyncManager interface implementation.
 func (b *rpcSyncMgr) LocateHeaders(locators []*chainhash.Hash, hashStop *chainhash.Hash) []wire.BlockHeader {
 	return b.server.chain.LocateHeaders(locators, hashStop)
-}
-
-// SyncHeight returns the block height of the best peer selected to sync from
-func (b *rpcSyncMgr) SyncHeight() uint64 {
-	return b.syncMgr.SyncHeight()
 }

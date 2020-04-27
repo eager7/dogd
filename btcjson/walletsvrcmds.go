@@ -27,6 +27,19 @@ func NewAddMultisigAddressCmd(nRequired int, keys []string, account *string) *Ad
 	}
 }
 
+// AddWitnessAddressCmd defines the addwitnessaddress JSON-RPC command.
+type AddWitnessAddressCmd struct {
+	Address string
+}
+
+// NewAddWitnessAddressCmd returns a new instance which can be used to issue a
+// addwitnessaddress JSON-RPC command.
+func NewAddWitnessAddressCmd(address string) *AddWitnessAddressCmd {
+	return &AddWitnessAddressCmd{
+		Address: address,
+	}
+}
+
 // CreateMultisigCmd defines the createmultisig JSON-RPC command.
 type CreateMultisigCmd struct {
 	NRequired int
@@ -65,6 +78,30 @@ type EncryptWalletCmd struct {
 func NewEncryptWalletCmd(passphrase string) *EncryptWalletCmd {
 	return &EncryptWalletCmd{
 		Passphrase: passphrase,
+	}
+}
+
+// EstimateSmartFeeMode defines the different fee estimation modes available
+// for the estimatesmartfee JSON-RPC command.
+type EstimateSmartFeeMode string
+
+var (
+	EstimateModeUnset        EstimateSmartFeeMode = "UNSET"
+	EstimateModeEconomical   EstimateSmartFeeMode = "ECONOMICAL"
+	EstimateModeConservative EstimateSmartFeeMode = "CONSERVATIVE"
+)
+
+// EstimateSmartFeeCmd defines the estimatesmartfee JSON-RPC command.
+type EstimateSmartFeeCmd struct {
+	ConfTarget   int64
+	EstimateMode *EstimateSmartFeeMode `jsonrpcdefault:"\"CONSERVATIVE\""`
+}
+
+// NewEstimateSmartFeeCmd returns a new instance which can be used to issue a
+// estimatesmartfee JSON-RPC command.
+func NewEstimateSmartFeeCmd(confTarget int64, mode *EstimateSmartFeeMode) *EstimateSmartFeeCmd {
+	return &EstimateSmartFeeCmd{
+		ConfTarget: confTarget, EstimateMode: mode,
 	}
 }
 
@@ -507,11 +544,10 @@ func NewSendManyCmd(fromAccount string, amounts map[string]float64, minConf *int
 
 // SendToAddressCmd defines the sendtoaddress JSON-RPC command.
 type SendToAddressCmd struct {
-	Address               string
-	Amount                float64
-	Comment               *string
-	CommentTo             *string
-	SubtractFeeFromAmount *bool
+	Address   string
+	Amount    float64
+	Comment   *string
+	CommentTo *string
 }
 
 // NewSendToAddressCmd returns a new instance which can be used to issue a
@@ -519,13 +555,12 @@ type SendToAddressCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewSendToAddressCmd(address string, amount float64, comment, commentTo *string, subtractFeeFromAmount *bool) *SendToAddressCmd {
+func NewSendToAddressCmd(address string, amount float64, comment, commentTo *string) *SendToAddressCmd {
 	return &SendToAddressCmd{
-		Address:               address,
-		Amount:                amount,
-		Comment:               comment,
-		CommentTo:             commentTo,
-		SubtractFeeFromAmount: subtractFeeFromAmount,
+		Address:   address,
+		Amount:    amount,
+		Comment:   comment,
+		CommentTo: commentTo,
 	}
 }
 
@@ -575,11 +610,10 @@ func NewSignMessageCmd(address, message string) *SignMessageCmd {
 // RawTxInput models the data needed for raw transaction input that is used in
 // the SignRawTransactionCmd struct.
 type RawTxInput struct {
-	Txid         string  `json:"txid"`
-	Vout         uint32  `json:"vout"`
-	ScriptPubKey string  `json:"scriptPubKey"`
-	RedeemScript string  `json:"redeemScript"`
-	Amount       float64 `json:"amount"`
+	Txid         string `json:"txid"`
+	Vout         uint32 `json:"vout"`
+	ScriptPubKey string `json:"scriptPubKey"`
+	RedeemScript string `json:"redeemScript"`
 }
 
 // SignRawTransactionCmd defines the signrawtransaction JSON-RPC command.
@@ -648,9 +682,11 @@ func init() {
 	flags := UFWalletOnly
 
 	MustRegisterCmd("addmultisigaddress", (*AddMultisigAddressCmd)(nil), flags)
+	MustRegisterCmd("addwitnessaddress", (*AddWitnessAddressCmd)(nil), flags)
 	MustRegisterCmd("createmultisig", (*CreateMultisigCmd)(nil), flags)
 	MustRegisterCmd("dumpprivkey", (*DumpPrivKeyCmd)(nil), flags)
 	MustRegisterCmd("encryptwallet", (*EncryptWalletCmd)(nil), flags)
+	MustRegisterCmd("estimatesmartfee", (*EstimateSmartFeeCmd)(nil), flags)
 	MustRegisterCmd("estimatefee", (*EstimateFeeCmd)(nil), flags)
 	MustRegisterCmd("estimatepriority", (*EstimatePriorityCmd)(nil), flags)
 	MustRegisterCmd("getaccount", (*GetAccountCmd)(nil), flags)
