@@ -17,8 +17,8 @@ github.com/eager7/doglog v0.0.0-20200426084830-384027fc4565/go.mod h1:bFnpHxKLVu
 github.com/eager7/doglog v0.0.0-20200427040431-a0db59f0a792 h1:YCWgPaQQlUD4NAMLSqnty8DPIBJeX+tp/2qkhIzr4Xo=
 github.com/eager7/doglog v0.0.0-20200427040431-a0db59f0a792/go.mod h1:bFnpHxKLVu82/oWCKTdMmC7Z79FFMbMJ+ylJQicf7dI=
 github.com/eager7/dogutil v0.0.0-20200427033507-8353d4a5b7fd/go.mod h1:wHHELBR7B/P0Dyvy0vdrx/JI3bi2sDQGn7bZzwf/TSw=
-github.com/eager7/dogutil v0.0.0-20200427033823-cd066b4fc75e h1:fEtWowjXFh0snQyXBaEVekQJOj5vK/cDRfumQwIz9bA=
-github.com/eager7/dogutil v0.0.0-20200427033823-cd066b4fc75e/go.mod h1:2JTeuOR+QrfOi6LR2FDH/RTi/k9+Npzye5y0YDMoXEw=
+github.com/eager7/dogutil v0.0.0-20200427040807-200e961ba4b5 h1:lOGAC6H9SF5UeJV6dQ45bzYBglPGYAdBj338GH10xXE=
+github.com/eager7/dogutil v0.0.0-20200427040807-200e961ba4b5/go.mod h1:2JTeuOR+QrfOi6LR2FDH/RTi/k9+Npzye5y0YDMoXEw=
 github.com/golang/protobuf v1.4.0-rc.1/go.mod h1:ceaxUfeHdC40wWswd/P6IGgMaK3YpKi5j83Wpe3EHw8=
 github.com/golang/protobuf v1.4.0-rc.1.0.20200221234624-67d41d38c208/go.mod h1:xKAWHe0F5eneWXFV3EuXVDTCmh+JuBKY0li0aMyXATA=
 github.com/golang/protobuf v1.4.0-rc.2/go.mod h1:LlEzMj4AhA7rCAGe4KMBDvJI+AwstrUpVNzEA03Pprs=
