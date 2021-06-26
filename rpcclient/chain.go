@@ -97,7 +97,7 @@ func (c *Client) GetBlockAsync(blockHash *chainhash.Hash) FutureGetBlockResult {
 		hash = blockHash.String()
 	}
 
-	cmd := btcjson.NewGetBlockCmd(hash, nil)
+	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Bool(false))
 	return c.sendCmd(cmd)
 }
 
@@ -142,7 +142,7 @@ func (c *Client) GetBlockVerboseAsync(blockHash *chainhash.Hash) FutureGetBlockV
 	}
 	// From the bitcoin-cli getblock documentation:
 	// "If verbosity is 1, returns an Object with information about block ."
-	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Int(1))
+	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Bool(true))
 	return c.sendCmd(cmd)
 }
 
@@ -184,7 +184,7 @@ func (c *Client) GetBlockVerboseTxAsync(blockHash *chainhash.Hash) FutureGetBloc
 	}
 	// From the bitcoin-cli getblock documentation:
 	// "If verbosity is 2, returns an Object with information about block  and information about each transaction."
-	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Int(2))
+	cmd := btcjson.NewGetBlockCmd(hash, btcjson.Bool(true))
 
 	return c.sendCmd(cmd)
 }
